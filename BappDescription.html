@@ -1,0 +1,13 @@
+<p>This extension automates testing HTTP file uploads. The ultimate goal is to implement all known attack techniques for file uploads. It includes tests for ImageTragick, ImageMagick and GraphicsMagick, Ghostscript, LibAVFormat, PHP/JSP/ASP injection, htaccess files, Server Side Includes, XXE, XSS, Eicar, PDFs, CSV/spreadsheets, path traversal, CSP bypasses, fingerprinting image libraries and much more.</p>
+<p>While the extension has various interesting features in its various modules, one of the main features is:</p>
+<ul>
+    <li>Taking a small gif, png, jpeg, tiff, pdf, zip and mp4 file</li>
+    <li>If it's an image, resize the image (sizes are UI options)</li>
+    <li>If it's an image, give it a random new color</li>
+    <li>If the file format supports it, use the exiftool file format meta data techniques "keywords", "comment", "iptc:keywords", "xmp:keywords", "exif:ImageDescription" and "ThumbnailImage" ...</li>
+    <li>... to inject PHP, JSP, ASP, XXE, SSRF, XXS and SSI payloads ...</li>
+    <li>... then upload with various combinations of file extensions and content-types ...</li>
+    <li>... to detect issues via sleep based payloads, Burp Collaborator interactions or by downloading the file again</li>
+</ul>
+<p>While it adds automated checks that are run during active scans, the full feature set can be used by sending a request via context menu to the UploadScanner UI.</p>
+<p>Detailed information can be found on <a href="https://github.com/modzero/mod0BurpUploadScanner">https://github.com/modzero/mod0BurpUploadScanner</a></p>

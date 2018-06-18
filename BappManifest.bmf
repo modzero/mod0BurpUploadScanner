@@ -1,0 +1,10 @@
+Uuid: 
+ExtensionType: 
+Name: UploadScanner
+ScreenVersion: 0.0.1
+SerialVersion: 1
+MinPlatformVersion: 0
+ProOnly: True
+Author: Tobias "floyd" Ospelt, modzero AG
+ShortDescription: Security scans for HTTP file uploads
+EntryPoint: UploadScanner.py
