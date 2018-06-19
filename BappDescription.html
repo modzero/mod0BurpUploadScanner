@@ -1,13 +1,38 @@
-<p>This extension automates testing HTTP file uploads. The ultimate goal is to implement all known attack techniques for file uploads. It includes tests for ImageTragick, ImageMagick and GraphicsMagick, Ghostscript, LibAVFormat, PHP/JSP/ASP injection, htaccess files, Server Side Includes, XXE, XSS, Eicar, PDFs, CSV/spreadsheets, path traversal, CSP bypasses, fingerprinting image libraries and much more.</p>
+<p>Testing web applications is a standard task for every security analyst. Various automated and semi-automated security testing tools exist to simplify the task. HTTP based file uploads are one specialised use case. However, most automated web application security scanners are not adapting their attacks when encountering file uploads and are therefore likely to miss vulnerabilities related to file upload functionalities.</p>
+
+<p>While a lot of techniques used for file upload testing are documented throughout the web, the code necessary to automate such attacks is often missing. In other cases, the techniques only apply to very specific use cases. One of the goals of this research was to generalise and automate these attacks. The attack techniques include generic attacks such as Cross Site Scripting (XSS), External Entity Injection (XXE) and PHP/JSP/ASP code injection, but the goal is to execute these attacks customised for the use case of HTTP based file uploads. Additionally, more specific attacks on server side parsers are used as an attack vector, for example Server Side Request Forgery (SSRF) through m3u8 playlist file formats being parsed with LibAv.</p>
+
+<p>File uploads on websites are an underestimated area for security testing. The attack surface on a server that parses files is automatically a lot bigger. While some of the issues that might occur get very high attention (eg. the ImageTragick vulnerability), there are countless memory corruption bugs that get fixed every day in various parses that might also be in use on your webserver. And while your REST XML web service might not be vulnerable to XML External Entity (XXE) injection, it doesn't mean your image parser for JPEG XMP metadata (which is XML) has no XXE issue.</p>
+
+<p>Various techniques are necessary to successfully upload a file, including correlation of file extensions, content types, and content. Moreover, the file content has to pass server-side checks or modifications such as image size requirements or resizing operations. Circumventing processing on the server side, creating content that survives the modification or creating content that results in the desired payload after the modification is another goal of this extension.</p>
+
+<p>While there are already a couple of Burp extensions doing some checks, this extension tries to implements most attacks that seem feasible for file uploads. The extension is testing various attacks and is divided into modules. Each module handles several attacks of the same category.</p>
+
+<p><b>Main feature</b></p>
+
 <p>While the extension has various interesting features in its various modules, one of the main features is:</p>
-<ul>
-    <li>Taking a small gif, png, jpeg, tiff, pdf, zip and mp4 file</li>
-    <li>If it's an image, resize the image (sizes are UI options)</li>
-    <li>If it's an image, give it a random new color</li>
-    <li>If the file format supports it, use the exiftool file format meta data techniques "keywords", "comment", "iptc:keywords", "xmp:keywords", "exif:ImageDescription" and "ThumbnailImage" ...</li>
-    <li>... to inject PHP, JSP, ASP, XXE, SSRF, XXS and SSI payloads ...</li>
-    <li>... then upload with various combinations of file extensions and content-types ...</li>
-    <li>... to detect issues via sleep based payloads, Burp Collaborator interactions or by downloading the file again</li>
-</ul>
-<p>While it adds automated checks that are run during active scans, the full feature set can be used by sending a request via context menu to the UploadScanner UI.</p>
-<p>Detailed information can be found on <a href="https://github.com/modzero/mod0BurpUploadScanner">https://github.com/modzero/mod0BurpUploadScanner</a></p>
+
+<ol>
+<li>Taking a small gif, png, jpeg, tiff, pdf, zip and mp4 file</li>
+<li>If it’s an image, resize the image (sizes are UI options)</li>
+<li>If it’s an image, give it a random new color</li>
+<li>If the file format supports it, use the exiftool file format meta data techniques "keywords", "comment", "iptc:keywords", "xmp:keywords", "exif:ImageDescription" and "ThumbnailImage" ...</li>
+<li>... to inject PHP, JSP, ASP, XXE, SSRF, XXS and SSI payloads ...</li>
+<li>... then upload with various combinations of file extensions and content-types ...</li>
+<li>... to detect issues via sleep based payloads, Burp Collaborator interactions or by downloading the file again</li>
+</ol>
+
+<p><b>Tutorials</b></p>
+
+<p>There are several tutorial videos available for the different topics that will help you get started. The UI of the extension changed a little since the videos were made, but it should be possible to get the basic ideas:</p>
+
+<ol>
+<li>The <a href="https://www.modzero.ch/share/uploadscanner/UploadScanner_101_Basics.mp4">101 Basic</a> video shows how the extension scans automatically without any configurations necessary if it can.</li>
+<li>The <a href="https://www.modzero.ch/share/uploadscanner/UploadScanner_102_FlexiInjector.mp4">102 FlexiInjector</a> video shows how the user can help the plugin in cases where the upload is not a multipart upload. All that is necessary, is to choose which file was uploaded in the browser.</li>
+<li>The <a href="https://www.modzero.ch/share/uploadscanner/UploadScanner_103_context_menu.mp4">103 Context menu</a> tutorial shows how upload request can be sent to the extension directly via Burp's context menu. This is the first step to enable features such as the ReDownloader and fingerping scans.</li>
+<li>The <a href="https://www.modzero.ch/share/uploadscanner/UploadScanner_104_recursive_upload_and_fuzzer.mp4">104 Recursive upload and fuzzer</a> tutorial shows the usage of two special sub-modules that will show additional UI options when activated.</li>
+<li>The <a href="https://www.modzero.ch/share/uploadscanner/UploadScanner_105_ReDownloader.mp4">105 ReDownloader</a> video shows one of the most important features that allows downloading files that were just uploaded by the plugin. This is necessary to detect certain issues.</li>
+<li>The <a href="https://www.modzero.ch/share/uploadscanner/UploadScanner_106_Fingerping_and_DoS.mp4">106 Fingerping and DoS</a> video shows a module to fingerprint server-side image libraries. It is only available when a request is sent via context menu to the UploadScanner and when the ReDownloader feature is configured. Additionally, this video shows how you can try to achieve a Denial of Service (DoS) condition on the server by simply ticking a checkbox.</li>
+<li>The <a href="https://www.modzero.ch/share/uploadscanner/UploadScanner_105_ReDownloader.mp4">107 Preflight</a> video explains how the optional preflight feature can be used.</li>
+</ol>
+

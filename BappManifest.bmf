@@ -1,10 +1,11 @@
-Uuid: 
-ExtensionType: 
-Name: UploadScanner
-ScreenVersion: 0.0.1
+Uuid: b2244cbb6953442cb3c82fa0a0d908fa
+ExtensionType: 2
+Name: Upload Scanner
+RepoName: upload-scanner
+ScreenVersion: 1.0
 SerialVersion: 1
 MinPlatformVersion: 0
 ProOnly: True
-Author: Tobias "floyd" Ospelt, modzero AG
-ShortDescription: Security scans for HTTP file uploads
+Author: Tobias 'floyd' Ospelt, modzero AG
+ShortDescription: Test file uploads with payloads embedded in meta data for various file formats.
 EntryPoint: UploadScanner.py
