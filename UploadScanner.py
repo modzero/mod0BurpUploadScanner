@@ -67,6 +67,7 @@ from java.net import URI
 from java.net import URL
 from java.nio.file import Files
 from java.lang import Thread
+from java.lang import IllegalStateException
 # python stdlib imports
 from io import BytesIO  # to mimic file IO but do it in-memory
 import tempfile  # to make temporary files for exiftool to process
@@ -926,6 +927,9 @@ class BurpExtender(IBurpExtender, IScannerCheck,
     # The actual implementation of the scan logic from here
     def do_checks(self, injector):
         burp_colab = BurpCollaborator(self._callbacks)
+        if not burp_colab.is_available:
+            burp_colab = None
+            print "Warning: No Burp Collaborator will be used"
         colab_tests = []
         scan_was_stopped = False
         try:
@@ -2634,6 +2638,9 @@ trailer <<
 
     def _ssrf(self, injector, burp_colab):
         colab_tests = []
+        # Burp community edition doesn't have Burp collaborator
+        if not burp_colab:
+            return colab_tests
 
         content = '[InternetShortcut]\r\nURL=http://test.example.org/\r\nWorkingDirectory=\\\\test.example.org\SMBShare\r\n' \
                   'ShowCommand=7\r\nModified=20F06BA06D07BD014D\r\nHotKey=1601'
@@ -3307,7 +3314,7 @@ trailer <<
                     self._make_http_request(injector, req)
 
                 # Combine with replacer
-                if injector.opts.ru_combine_with_replacer:
+                if injector.opts.ru_combine_with_replacer and burp_colab:
                     i = 1
                     for prot in BurpExtender.PROTOCOLS_HTTP:
                         if prot in content:
@@ -4136,11 +4143,19 @@ class BurpCollaborator:
     # collaborator is configured with a DNS name or as an IP
     # Also creates fixed size payloads, always length FIXED_PAYLOAD_SIZE + 1 + len(server location)
     def __init__(self, callbacks):
+        self.is_ip_collaborator = False
+        self.is_available = False
         self.burp_colab = callbacks.createBurpCollaboratorClientContext()
-        # IP Form:  192.168.0.1/payload
-        # DNS Form: payload.burpcollaborator.net
-        self.is_ip_collaborator = '/' in FloydsHelpers.u2s(callbacks.createBurpCollaboratorClientContext().generatePayload(True))
-        self.server_location = FloydsHelpers.u2s(self.burp_colab.getCollaboratorServerLocation())
+        if self.burp_colab:
+            # IP Form:  192.168.0.1/payload
+            # DNS Form: payload.burpcollaborator.net
+            try:
+                self.is_ip_collaborator = '/' in FloydsHelpers.u2s(callbacks.createBurpCollaboratorClientContext().generatePayload(True))
+                self.server_location = FloydsHelpers.u2s(self.burp_colab.getCollaboratorServerLocation())
+                self.is_available = True
+            except IllegalStateException:
+                # happens when Option "Don't use Burp Collaborator" is chosen in project options
+                self.burp_colab = None
 
     def fetchAllCollaboratorInteractions(self):
         return self.burp_colab.fetchAllCollaboratorInteractions()
@@ -8003,7 +8018,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         _, self.cb_replace_filename = self.checkbox('Replace filename in requests:', self.replace_filename)
         _, self.cb_replace_ct = self.checkbox('Replace content type in requests:', self.replace_ct)
         _, self.cb_replace_filesize = self.checkbox('Replace file size in requests:', self.replace_filesize)
-        _, self.cb_wget_curl_payloads  = self.checkbox('Use wget/curl/rundll RCE payloads (default: only nslookup)', self.wget_curl_payloads)
+        _, self.cb_wget_curl_payloads  = self.checkbox('Use wget/curl/rundll RCE payloads (default: nslookup)', self.wget_curl_payloads)
 
         # End general part
 
