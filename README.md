@@ -424,6 +424,9 @@ You can specify the name of the exiftool binary in your $PATH or you can specify
 #### Throttle between requests in seconds
 Burp global options for active scan throttling are not used for extensions up to Burp version 1.7.32, therefore this parameter allows to configure such a throttle before 1.7.32. Also, if you start the scan from the context menu of UploadScanner, the scan is not categorized as an active scan and therefore this throttle still allows you to throttle requests.
 
+#### Sleep time for sleep payloads in seconds
+When using sleep based payloads where we expect the server to delay the delivery of the response during a successful attack, this sleep time is used. As websites usually have different response times, this value might be too high or too low for the tested website.
+
 #### Create log (see "Done uploads" tab)
 Enable this option if you want to log all requests done by the extension in the "Done uploads" tab. You can also just use the Logger++ extension instead. This log is never persisted and cleared when the UploadScanner extension is reloaded.
 
