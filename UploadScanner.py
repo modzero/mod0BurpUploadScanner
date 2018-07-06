@@ -127,7 +127,6 @@ class BurpExtender(IBurpExtender, IScannerCheck,
     MARKER_COLLAB_URL = "http://example.org/"
     MARKER_CACHE_DEFEAT_URL = "https://example.org/cachedefeat/"
     NEWLINE = "\r\n"
-    SLEEP_TIME = 6
     REGEX_PASSWD = re.compile("[^:]{3,20}:[^:]{1,100}:\d{0,20}:\d{0,20}:[^:]{0,100}:[^:]{0,100}:[^:]*$")
     # TODO: If we just add \\ the extension uploads *a lot more* files... worth doing?
     PROTOCOLS_HTTP = (
@@ -1151,12 +1150,12 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         for cmd_name, cmd, factor, args in self._get_sleep_commands(injector):
             if injector.opts.file_formats['mvg'].isSelected():
                 issue = self._create_issue_template(injector.get_brr(), name, detail.format("MVG", cmd), confidence, severity)
-                content_mvg = mvg.format(injector.opts.image_width, injector.opts.image_height, cmd, BurpExtender.SLEEP_TIME * factor, args)
-                self._send_sleep_based(injector, filename + "Mvg" + cmd_name, content_mvg, self.IM_MVG_TYPES, BurpExtender.SLEEP_TIME, issue)
+                content_mvg = mvg.format(injector.opts.image_width, injector.opts.image_height, cmd, injector.opts.sleep_time * factor, args)
+                self._send_sleep_based(injector, filename + "Mvg" + cmd_name, content_mvg, self.IM_MVG_TYPES, injector.opts.sleep_time, issue)
             if injector.opts.file_formats['svg'].isSelected():
                 issue = self._create_issue_template(injector.get_brr(), name, detail.format("SVG", cmd), confidence, severity)
-                content_svg = svg.format(injector.opts.image_width, injector.opts.image_height, cmd, BurpExtender.SLEEP_TIME * factor, args, injector.opts.image_height, injector.opts.image_width)
-                self._send_sleep_based(injector, filename + "Svg" + cmd_name, content_svg, self.IM_SVG_TYPES, BurpExtender.SLEEP_TIME, issue)
+                content_svg = svg.format(injector.opts.image_width, injector.opts.image_height, cmd, injector.opts.sleep_time * factor, args, injector.opts.image_height, injector.opts.image_width)
+                self._send_sleep_based(injector, filename + "Svg" + cmd_name, content_svg, self.IM_SVG_TYPES, injector.opts.sleep_time, issue)
 
         return []
 
@@ -1226,16 +1225,16 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 
         # Sleep based
         for cmd_name, cmd, factor, args in self._get_sleep_commands(injector):
-            basenames = [ "|{} {}{}|a".format(cmd, BurpExtender.SLEEP_TIME * factor, args),
-                          #"|{}%20{}{}|a".format(cmd.replace(" ", "%20"), BurpExtender.SLEEP_TIME * factor, args.replace(" ", "%20")),
-                          "|" + cmd.replace(" ", "${IFS}") + "${IFS}" + str(BurpExtender.SLEEP_TIME * factor) + args.replace(" ", "%20") + "|a",
-                          "1%20-write%20|{}%20{}{}|a".format(cmd.replace(" ", "%20"), BurpExtender.SLEEP_TIME * factor, args.replace(" ", "%20")),
-                          "1${IFS}-write${IFS}|" + cmd.replace(" ", "${IFS}") + "${IFS}" + str(BurpExtender.SLEEP_TIME * factor) + args.replace(" ", "${IFS}") + "|a",
+            basenames = [ "|{} {}{}|a".format(cmd, injector.opts.sleep_time * factor, args),
+                          #"|{}%20{}{}|a".format(cmd.replace(" ", "%20"), injector.opts.sleep_time * factor, args.replace(" ", "%20")),
+                          "|" + cmd.replace(" ", "${IFS}") + "${IFS}" + str(injector.opts.sleep_time * factor) + args.replace(" ", "%20") + "|a",
+                          "1%20-write%20|{}%20{}{}|a".format(cmd.replace(" ", "%20"), injector.opts.sleep_time * factor, args.replace(" ", "%20")),
+                          "1${IFS}-write${IFS}|" + cmd.replace(" ", "${IFS}") + "${IFS}" + str(injector.opts.sleep_time * factor) + args.replace(" ", "${IFS}") + "|a",
                           ]
             for basename in basenames:
                 details = base_details + detail_sleep.format(cmd_name, basename)
                 issue = self._create_issue_template(injector.get_brr(), name, details, confidence, severity)
-                self._send_sleep_based(injector, basename, content, types, BurpExtender.SLEEP_TIME, issue)
+                self._send_sleep_based(injector, basename, content, types, injector.opts.sleep_time, issue)
 
         # Burp community edition doesn't have Burp collaborator
         if not burp_colab:
@@ -1332,8 +1331,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             for cmd_name, cmd, factor, args in self._get_sleep_commands(injector):
                 details = base_detail + detail_sleep.format(param, cve, cmd)
                 issue = self._create_issue_template(injector.get_brr(), name + " " + cve, details, confidence, severity)
-                sleep_content = content.format(param, cmd, str(BurpExtender.SLEEP_TIME * factor) + args)
-                self._send_sleep_based(injector, basename + cmd_name, sleep_content, self.GS_TYPES, BurpExtender.SLEEP_TIME, issue)
+                sleep_content = content.format(param, cmd, str(injector.opts.sleep_time * factor) + args)
+                self._send_sleep_based(injector, basename + cmd_name, sleep_content, self.GS_TYPES, injector.opts.sleep_time, issue)
 
         # Burp community edition doesn't have Burp collaborator
         if not burp_colab:
@@ -7675,6 +7674,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
 
         # Options general:
         self.throttle_time = 0.0
+        self.sleep_time = 6.0
         self.create_log = False
         self.replace_filename = True
         self.replace_ct = True
@@ -7751,6 +7751,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         serialized_object['show_formats'] = self.cb_show_formats.isSelected()
 
         serialized_object['throttle_time'] = self.throttle_time
+        serialized_object['sleep_time'] = self.sleep_time
         serialized_object['create_log'] = self.create_log
         serialized_object['replace_filename'] = self.replace_filename
         serialized_object['replace_ct'] = self.replace_ct
@@ -7816,6 +7817,9 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         self.cb_show_formats.setSelected(serialized_object['show_formats'])
 
         self.tf_throttle_time.setText(str(serialized_object['throttle_time']))
+        # This "if" is necessary to be backward compatible (the old serialized object does not have this attribute)
+        if 'sleep_time' in serialized_object:
+            self.tf_sleep_time.setText(str(serialized_object['sleep_time']))
         self.cb_create_log.setSelected(serialized_object['create_log'])
         self.cb_replace_filename.setSelected(serialized_object['replace_filename'])
         self.cb_replace_ct.setSelected(serialized_object['replace_ct'])
@@ -8014,6 +8018,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 self.lbl_image_exiftool, self.tf_image_exiftool = self.large_tf("Name of exiftool executable (in $PATH or absolute path):",
                                                                                 text=self.image_exiftool)
         self.lbl_throttle_time, self.tf_throttle_time = self.small_tf("Throttle between requests in seconds:", str(self.throttle_time))
+        self.lbl_sleep_time, self.tf_sleep_time = self.small_tf("Sleep time for sleep payloads in seconds:", str(self.sleep_time))
         _, self.cb_create_log = self.checkbox('Create log, see "Done uploads" tab:', self.create_log)
         _, self.cb_replace_filename = self.checkbox('Replace filename in requests:', self.replace_filename)
         _, self.cb_replace_ct = self.checkbox('Replace content type in requests:', self.replace_ct)
@@ -8137,6 +8142,13 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         except ValueError:
             self.throttle_time = 0.0
             OptionsPanel.mark_misconfigured(self.lbl_throttle_time)
+        
+        try:
+            self.sleep_time = float(FloydsHelpers.u2s(self.tf_sleep_time.getText()))
+            OptionsPanel.mark_configured(self.lbl_sleep_time)
+        except ValueError:
+            self.sleep_time = 6.0
+            OptionsPanel.mark_misconfigured(self.lbl_sleep_time)
 
         self.create_log = self.cb_create_log.isSelected()
         self.replace_filename = self.cb_replace_filename.isSelected()
