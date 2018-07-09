@@ -2077,12 +2077,7 @@ Response.write(a&c&b)
         return colab_tests
 
     def _ssi_payload(self):
-        non_existant_domain = "{}{}{}.{}{}{}.local".format(str(random.randint(100000, 999999)),
-                                                           str(random.randint(100000, 999999)),
-                                                           str(random.randint(100000, 999999)),
-                                                           str(random.randint(100000, 999999)),
-                                                           str(random.randint(100000, 999999)),
-                                                           str(random.randint(100000, 999999)))
+        non_existant_domain = "{}.{}.local".format(str(random.randint(100000, 999999)), str(random.randint(100000, 999999)))
         expect = " can't find " + non_existant_domain
         content = '<!--#exec cmd="nslookup ' + non_existant_domain + '" -->'
         return content, expect
