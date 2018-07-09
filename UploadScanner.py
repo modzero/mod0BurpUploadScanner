@@ -138,7 +138,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         'http://',
         'https://',
     )
-    MAX_SERIALIZED_DOWNLOAD_MATCHERS = 300
+    MAX_SERIALIZED_DOWNLOAD_MATCHERS = 500
+    MAX_RESPONSE_SIZE = 300000  # 300kb
 
     # ReDownloader constants/read-only:
     REDL_URL_BAD_HEADERS = ("content-length:", "accept:", "content-type:", "referer:")
@@ -786,8 +787,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             # This can get computationally expensive if there are a lot of files that were uploaded...
             # ... make sure we only scan responses and if we have any matcher rules
             if not messageIsRequest:
-                if len(base_request_response.getResponse()) >= 300000:
-                    # Don't look at responses longer than 300kb
+                if len(base_request_response.getResponse()) >= BurpExtender.MAX_RESPONSE_SIZE:
+                    # Don't look at responses longer than MAX_RESPONSE_SIZE
                     return
                 iRequestInfo = self._helpers.analyzeRequest(base_request_response)
                 #print type(iRequestInfo.getUrl().toString()), repr(iRequestInfo.getUrl().toString())
@@ -5234,9 +5235,9 @@ class BackdooredFile:
                                 # print "Successfully produced image file with payload in the following metadata:", name, ext
                                 yield payload, expect, name, ext, c
                         else:
-                            print "Warning: Payload missing in output. E.g. one reason: IPTC:Keywords has length limit of 64. " \
-                                  "Image that could not be created: {} {}. Payload that should be injected" \
-                                  " and placeholder: {} {}".format(name, ext, repr(payload), payload_placeholder)
+                            print "Warning: Payload missing. IPTC:Keywords has length limit of 64. " \
+                                  "Technique: {}, File type: {}, Payload length: {}" \
+                                  "".format(name, ext, len(payload_placeholder))
                             # print "Content:", repr(new_content)
                     else:
                         print "Error: The following image could not be created (exiftool didn't create a file):", name, ext
