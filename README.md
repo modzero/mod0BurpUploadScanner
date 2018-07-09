@@ -52,6 +52,7 @@ A Burp Suite Pro extension to do security tests for HTTP file uploads.
     - [Delete project settings on reload](#delete-project-settings-on-reload)
     - [Name of exiftool executable](#name-of-exiftool-executable)
     - [Throttle between requests in seconds](#throttle-between-requests-in-seconds)
+    - [Sleep time for sleep payloads in seconds](#sleep-time-for-sleep-payloads-in-seconds)
     - [Create log (see "Done uploads" tab)](#create-log-see-done-uploads-tab)
     - [Replace filename in requests](#replace-filename-in-requests)
     - [Replace content type in requests](#replace-content-type-in-requests)
