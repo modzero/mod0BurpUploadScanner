@@ -808,6 +808,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 matchers = self.dl_matchers.get_matchers_for_url(url)
                 if not matchers:
                     #We hit this for all not "in scope" requests
+                    #we also hit it for URLs that can not be parsed by urlparse such as https://github.com/modzero/mod0BurpUploadScanner/issues/12
                     return
                 iResponseInfo = self._helpers.analyzeResponse(base_request_response.getResponse())
                 headers = [FloydsHelpers.u2s(x) for x in iResponseInfo.getHeaders()]
@@ -1882,10 +1883,15 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         urr = urrs[0]
         if urr.download_rr:
             url = FloydsHelpers.u2s(self._helpers.analyzeRequest(urr.download_rr).getUrl().toString())
-            path = urlparse.urlparse(url).path
-            path_no_filename = path.rsplit("/", 1)[0] + "/"
-            self.dl_matchers.add(DownloadMatcher(issue, filecontent="Index of /", url_content=path_no_filename))
-            self._send_get_request(urr.download_rr, path_no_filename, injector.opts.create_log)
+            try:
+                path = urlparse.urlparse(url).path
+            except ValueError:
+                # Catch https://github.com/modzero/mod0BurpUploadScanner/issues/12
+                path = None
+            if path:
+                path_no_filename = path.rsplit("/", 1)[0] + "/"
+                self.dl_matchers.add(DownloadMatcher(issue, filecontent="Index of /", url_content=path_no_filename))
+                self._send_get_request(urr.download_rr, path_no_filename, injector.opts.create_log)
 
         if not burp_colab:
             return []
@@ -6666,6 +6672,8 @@ class DownloadMatcherCollection(object):
     def get_matchers_for_url(self, url):
         with self._thread_lock:
             hostport = self._get_host(url)
+            if not hostport:
+                return []
             if hostport in self._collection:
                 return self.with_global(self._collection[hostport])
 
@@ -6692,7 +6700,11 @@ class DownloadMatcherCollection(object):
     def _get_host(self, url):
         if not url:
             return None
-        x = urlparse.urlparse(url)
+        try:
+            x = urlparse.urlparse(url)
+        except ValueError:
+            # Catch errors such as the one described on https://github.com/modzero/mod0BurpUploadScanner/issues/12
+            return None
         return x.hostname
 
     def serialize(self):
