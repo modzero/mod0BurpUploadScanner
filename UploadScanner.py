@@ -716,6 +716,15 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         return self._main_jtabedpane
 
     def show_error_popup(self, error_details):
+        try:
+            f = file("BappManifest.bmf", "rb").readlines()
+            for line in f:
+                if line.startswith("ScreenVersion: "):
+                    print line
+                    error_details += "\n" + line.replace("ScreenVersion", "Upload Scanner Version")
+                    break
+        except:
+            print "Could not find plugin version..."
         self._no_of_errors += 1
         if self._no_of_errors < 2:
             full_msg = 'The Burp extension "Upload Scanner" just crashed. The details of the issue are at the bottom. \n' \
