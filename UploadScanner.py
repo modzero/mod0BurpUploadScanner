@@ -68,6 +68,7 @@ from java.net import URL
 from java.nio.file import Files
 from java.lang import Thread
 from java.lang import IllegalStateException
+from java.lang import System
 # python stdlib imports
 from io import BytesIO  # to mimic file IO but do it in-memory
 import tempfile  # to make temporary files for exiftool to process
@@ -725,6 +726,11 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                     break
         except:
             print "Could not find plugin version..."
+        try:
+            error_details += "\nJython version: " + sys.version
+            error_details += "\nJava version: " + System.getProperty("java.version")
+        except:
+            print "Could not find Jython/Java version..."
         self._no_of_errors += 1
         if self._no_of_errors < 2:
             full_msg = 'The Burp extension "Upload Scanner" just crashed. The details of the issue are at the bottom. \n' \
