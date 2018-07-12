@@ -484,6 +484,26 @@ Then your start marker for parsing would be:
 
 `"FileLocation":"`
 
+To achieve maximum flexibility (e.g. because with literal values in this UI field you can not indicate a newline), the extension also supports another mechanism. To use this other mechanism you have to start your input with `${PYTHONSTR:` followed by a Python and string and ending the input with `}`.
+
+The Python string has to be able to be parsed by [Python's ast.literal_eval](https://docs.python.org/2/library/ast.html#ast.literal_eval). Additionally literal_eval has to return a string for your input. So the equivalent of the start marker for the above example would be:
+
+`${PYTHONSTR:'"FileLocation":"'}`
+
+Let's say we need a start marker for a more complicated response:
+
+```
+status: success
+https://cdn.example.org/RaNdOmLyChangingFooBar/avatar.png
+size: 1MB
+```
+
+You would be able to use a start marker such as:
+
+`${PYTHONSTR:"success\n"}`
+
+Make sure you use the right newline type. It's also possible to use \x41 hex encoding in these strings.
+
 #### 1. End marker to parse URL from response
 
 Let's say the upload response includes the following JSON:
@@ -493,6 +513,8 @@ Let's say the upload response includes the following JSON:
 Then your end marker for parsing would be:
 
 `"}`
+
+This UI field also supports the `${PYTHONSTR:'"}'}` syntax explained for the start marker.
 
 #### Replace \/ with / in parsed content
 

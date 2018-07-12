@@ -94,6 +94,7 @@ import zlib  # for the fingerping module
 import itertools  # for the fingerping module
 import threading  # to make stuff thread safe
 import pickle  # persisting object serialization between extension reloads
+import ast  # to parse ${PYTHONSTR:'abc\ndef'} into a python str
 
 # Developer debug mode
 global DEBUG_MODE
@@ -145,6 +146,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
     # ReDownloader constants/read-only:
     REDL_URL_BAD_HEADERS = ("content-length:", "accept:", "content-type:", "referer:")
     REDL_FILENAME_MARKER = "${FILENAME}"
+    PYTHON_STR_MARKER_START = "${PYTHONSTR:"
+    PYTHON_STR_MARKER_END = "}"
 
     # Implement IBurpExtender
     def registerExtenderCallbacks(self, callbacks):
@@ -7809,7 +7812,9 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         # Options Download-Again:
         # Make configurable
         self.redl_start_marker = ''
+        self.redl_start_marker_transformed = ''  # transformed means ${PYTHONSTR:''} placeholders changed to actual values
         self.redl_end_marker = ''
+        self.redl_end_marker_transformed = ''  # transformed means ${PYTHONSTR:''} placeholders changed to actual values
         self.redl_repl_backslash = False
         self.redl_parse_preflight_url = ''
         self.redl_prefix = ''
@@ -8207,6 +8212,18 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 formats.add("." + file_format)
         return formats
 
+    def _process_python_str(self, input):
+        output = input
+        if input.startswith(BurpExtender.PYTHON_STR_MARKER_START) and input.endswith(BurpExtender.PYTHON_STR_MARKER_END):
+            value = input[len(BurpExtender.PYTHON_STR_MARKER_START):-len(BurpExtender.PYTHON_STR_MARKER_END)]
+            try:
+                parsed = ast.literal_eval(value)
+            except (ValueError, SyntaxError), e:
+                print "Issue when processing your specified", input
+                print e
+            if isinstance(parsed, str):
+                output = parsed
+        return output
 
     #
     # UI: implement what happens when options are changed
@@ -8501,12 +8518,14 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
             not self.redl_static_url == FloydsHelpers.u2s(self.tf_redl_static_url.getText())
 
         self.redl_start_marker = FloydsHelpers.u2s(self.tf_redl_start_marker.getText())
-        if self.redl_start_marker:
+        self.redl_start_marker_transformed = self._process_python_str(self.redl_start_marker)
+        if self.redl_start_marker_transformed:
             OptionsPanel.mark_configured(self.lbl_redl_start_marker)
         else:
             OptionsPanel.mark_disabled(self.lbl_redl_start_marker)
         self.redl_end_marker = FloydsHelpers.u2s(self.tf_redl_end_marker.getText())
-        if self.redl_end_marker:
+        self.redl_end_marker_transformed = self._process_python_str(self.redl_end_marker)
+        if self.redl_end_marker_transformed:
             OptionsPanel.mark_configured(self.lbl_redl_end_marker)
         else:
             OptionsPanel.mark_disabled(self.lbl_redl_end_marker)
@@ -8581,7 +8600,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 OptionsPanel.mark_misconfigured(self.scan_controler.lbl_parser)
                 self.scan_controler.disable_redownload()
                 self.redl_configured = False
-            elif self.redl_start_marker and self.redl_end_marker:
+            elif self.redl_start_marker_transformed and self.redl_end_marker_transformed:
                 OptionsPanel.mark_configured(self.lbl_redl)
                 # This means for sure this is prefered over the static URL (even when misconfigured)
                 OptionsPanel.mark_disabled(self.lbl_redl_static_url)
@@ -8598,14 +8617,17 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 else:
                     resp = FloydsHelpers.jb2ps(self.scan_controler.upload_resp_view.getMessage())
                 if resp:
-                    parsed_content = FloydsHelpers.between_markers(resp, self.redl_start_marker, self.redl_end_marker)
+                    multipart_file_name = CustomMultipartInsertionPoint(self._helpers, BurpExtender.NEWLINE,
+                                                                        FloydsHelpers.jb2ps(self.scan_controler.upload_req_view.getMessage())).getBaseValue()
+                    redownload_file_name = self.fi_ofilename or multipart_file_name or "example.jpeg"
+                    redl_start_marker = self.redl_start_marker_transformed.replace(BurpExtender.REDL_FILENAME_MARKER, redownload_file_name)
+                    redl_end_marker = self.redl_end_marker_transformed.replace(BurpExtender.REDL_FILENAME_MARKER, redownload_file_name)
+                    parsed_content = FloydsHelpers.between_markers(resp, redl_start_marker, redl_end_marker)
                     if parsed_content:
                         self.scan_controler.lbl_parser.setText("Configuration status: Simple parse ready for test, check requests manually first!")
                         OptionsPanel.mark_configured(self.scan_controler.lbl_parser)
                         self.scan_controler.btn_start.setText("Start scan without ReDownloader")
-                        multipart_file_name = CustomMultipartInsertionPoint(self._helpers, BurpExtender.NEWLINE,
-                                                        FloydsHelpers.jb2ps(self.scan_controler.upload_req_view.getMessage())).getBaseValue()
-                        redownload_file_name = self.fi_ofilename or multipart_file_name or "example.jpeg"
+
                         service, req = self._calculate_download_request(self.scan_controler.brr, resp, redownload_file_name)
                         if service and req:
                             self.scan_controler.set_redownload_req(service, req)
@@ -8613,12 +8635,12 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                     else:
                         misconfiguration = True
                         OptionsPanel.mark_misconfigured(self.lbl_redl)
-                        if not self.redl_start_marker in resp:
-                            self.scan_controler.lbl_parser.setText("Configuration status: Misconfiguration, no start marker "+self.redl_start_marker+" in response")
-                        elif not self.redl_end_marker in resp:
-                            self.scan_controler.lbl_parser.setText("Configuration status: Misconfiguration, no end marker "+self.redl_end_marker+" in response")
+                        if not redl_start_marker in resp:
+                            self.scan_controler.lbl_parser.setText("Configuration status: Misconfiguration, no start marker " + redl_start_marker + " in response")
+                        elif not redl_end_marker in resp:
+                            self.scan_controler.lbl_parser.setText("Configuration status: Misconfiguration, no end marker " + redl_end_marker + " in response")
                         else:
-                            self.scan_controler.lbl_parser.setText("Configuration status: Misconfiguration, no content between "+self.redl_start_marker+" and "+self.redl_end_marker)
+                            self.scan_controler.lbl_parser.setText("Configuration status: Misconfiguration, no content between " + redl_start_marker + " and " + redl_end_marker)
                         OptionsPanel.mark_misconfigured(self.scan_controler.lbl_parser)
                         OptionsPanel.mark_misconfigured(self.lbl_redl)
                         OptionsPanel.mark_misconfigured(self.lbl_redl_start_marker)
@@ -8786,9 +8808,11 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
     def _calculate_download_request(self, brr, resp, sent_filename, use_from_ui=False):
         prefix = self.redl_prefix.replace(BurpExtender.REDL_FILENAME_MARKER, urllib.quote(sent_filename))
         suffix = self.redl_suffix.replace(BurpExtender.REDL_FILENAME_MARKER, urllib.quote(sent_filename))
+        redl_start_marker = self.redl_start_marker_transformed.replace(BurpExtender.REDL_FILENAME_MARKER, sent_filename)
+        redl_end_marker = self.redl_end_marker_transformed.replace(BurpExtender.REDL_FILENAME_MARKER, sent_filename)
         service = brr.getHttpService()
-        if resp and self.redl_start_marker and self.redl_end_marker:
-            url_path = FloydsHelpers.between_markers(resp, self.redl_start_marker, self.redl_end_marker)
+        if resp and redl_start_marker and redl_end_marker:
+            url_path = FloydsHelpers.between_markers(resp, redl_start_marker, redl_end_marker)
             if url_path:
                 if self.redl_repl_backslash:
                     url_path = url_path.replace("\\/", "/")
