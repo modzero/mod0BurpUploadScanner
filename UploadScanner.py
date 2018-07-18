@@ -1372,6 +1372,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         return colab_tests
 
     def _libavformat(self, injector, burp_colab):
+        # TODO: Implement .qlt files maybe? https://www.gnucitizen.org/blog/backdooring-mp3-files/
         # Burp community edition doesn't have Burp collaborator
         if not burp_colab:
             return []
@@ -1649,7 +1650,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         if mime:
             # TODO feature: include .asa and .asax etc. but we need a Windows test server for that first
             # According to https://community.rapid7.com/community/metasploit/blog/2009/12/28/exploiting-microsoft-iis-with-metasploit
-            # the file extension .asp;.png should work fine...
+            # the file extension .asp;.png should work fine... see also https://soroush.secproject.com/downloadable/iis-semicolon-report.pdf
             types = {
                 ('', BurpExtender.MARKER_ORIG_EXT, ''),
                 ('', '.asp;' + BurpExtender.MARKER_ORIG_EXT, ''),
@@ -2353,12 +2354,12 @@ Response.write(a&c&b)
             return colab_tests
         if injector.opts.file_formats['xml'].isSelected():
             # The standard file we are going to use for the tests:
-            base_xml = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>' \
-                       '<!DOCTYPE test [ \n <!ELEMENT tagtest ANY> \n]><tagtest>test</tagtest>'
-            root_tag = '<?xml version="1.0" encoding="UTF-8" standalone="no"?><!DOCTYPE test [ \n <!ELEMENT tagtest ANY> \n]>'
-            test_tag = '<tagtest>test</tagtest>'
+            root_tag = '<?xml version="1.0" encoding="UTF-8" standalone="no"?>' \
+                       '<!DOCTYPE test [ \n <!ELEMENT text ANY> \n]>'
+            test_tag = '<text>test</text>'
+            base_xml = root_tag + test_tag
 
-            for payload_desc, technique_name, xml in Xxe.get_payloads(base_xml, root_tag, test_tag, 'tagtest'):
+            for payload_desc, technique_name, xml in Xxe.get_payloads(base_xml, root_tag, test_tag, 'text'):
                 basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "XxeXml" + technique_name
                 name = "XML " + technique_name + " SSRF/XXE"
                 severity = "Medium"
@@ -2504,6 +2505,9 @@ Response.write(a&c&b)
         return []
 
     def _pdf(self, injector, burp_colab):
+
+        # TODO: Look if this should be implemented: http://michaeldaw.org/backdooring-pdf-files
+
         colab_tests = []
 
         if injector.opts.file_formats['pdf'].isSelected():
@@ -5284,6 +5288,7 @@ class BackdooredFile:
 
 
 class Xxe(object):
+    # TODO: Unsure if these techniques are fine... See e.g. slide 29 on https://media.blackhat.com/eu-13/briefings/Osipov/bh-eu-13-XML-data-osipov-slides.pdf
     @staticmethod
     def get_root_tag_techniques(root_tag, new_root_tag):
         techniques = {'Dtd': [
@@ -6600,7 +6605,10 @@ class DownloadMatcherCollection(object):
     # Another problem there: We try to keep the amount of DownloadMatcher as small as possible by putting
     # them in a set and removing duplicates. Therefore several upload requests associate with *one* DownloadMatcher
     # therefore we can not simply match a DownloadMatcher to one upload request...
-    # Maybe we can simply work with self._callbacks.saveBuffersToTempFiles some more ???
+    # Working with self._callbacks.saveBuffersToTempFiles is therefore not an option
+    # In Burp these original request are sometimes recreated from the payloads. However, in our case the
+    # payloads are file contents, so again a lot of data we don't want to keep in memory.
+    # Not keeping in memory for now.
     def __init__(self, helpers):
         self._collection = {}
         self._scope_mapping = {}
