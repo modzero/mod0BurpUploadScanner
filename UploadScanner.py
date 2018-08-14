@@ -810,7 +810,12 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                     return
                 iRequestInfo = self._helpers.analyzeRequest(base_request_response)
                 #print type(iRequestInfo.getUrl().toString()), repr(iRequestInfo.getUrl().toString())
-                url = FloydsHelpers.u2s(iRequestInfo.getUrl().toString())
+                url = iRequestInfo.getUrl()
+                if url:
+                    url = FloydsHelpers.u2s(url.toString())
+                else:
+                    # Indeed the url might be None... according to https://github.com/modzero/mod0BurpUploadScanner/issues/17
+                    return
                 # ... do not scan things that are not "in scope" (see DownloadMatcherCollection class)
                 # means we only check if we uploaded stuff to that host or the user configured
                 # another host in the ReDownloader options that is therefore also "in scope"
@@ -2499,7 +2504,7 @@ Response.write(a&c&b)
                'installed on the server. That reduces the attack surface (attackers can not attack the antivirus ' \
                'software) but if any uploaded files are ever executed, then malware is not detected. You should try ' \
                'to upload an executable (e.g. with the recrusive uploader module of the UploadScanner).'
-        issue = self._create_issue_template(injector.get_brr(), title, desc, "Firm", "Low")
+        issue = self._create_issue_template(injector.get_brr(), title, desc, "Tentative", "Low")
         self.dl_matchers.add(DownloadMatcher(issue, filecontent=content_eicar))
         self._send_simple(injector, self.EICAR_TYPES, basename, content_eicar, redownload=True)
         return []
@@ -2530,7 +2535,7 @@ Response.write(a&c&b)
                    'here: https://github.com/deepzec/Bad-Pdf and https://research.checkpoint.com/ntlm-credentials-theft-via-pdf-files/ . Although they ' \
                    'claim that it works in any PDF reader, it did not work in IE\'s built-in PDF reader, but it did work in Adobe Reader.<br><br>' \
                    'The file that was uploaded here is from Ange Albertini and located at https://github.com/corkami/pocs/blob/master/pdf/javascript.pdf'
-            issue = self._create_issue_template(injector.get_brr(), title, desc, "Firm", "Low")
+            issue = self._create_issue_template(injector.get_brr(), title, desc, "Tentative", "Low")
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=content))
             self._send_simple(injector, self.PDF_TYPES, basename, content, redownload=True)
 
@@ -2608,7 +2613,7 @@ trailer
                      "burp colaborator URL. This means that Server Side Request Forgery might be possible " \
                      "or that a user downloaded the file and opened it in Adobe reader. <br><br> {} <br>" \
                      "Interactions:<br><br>".format(base_detail)
-            issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Firm", "Low")
+            issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Tentative", "Low")
             issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
             self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
             self._send_simple(injector, self.PDF_TYPES, basename + "Mal", content, redownload=True)
@@ -2650,7 +2655,7 @@ trailer
                            "burp colaborator URL. This means that Server Side Request Forgery might be possible " \
                            "or that a user downloaded the file and opened it in Adobe reader. <br><br> {} <br>" \
                            "Interactions:<br><br>".format(base_detail)
-            issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Firm", "Low")
+            issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Tentative", "Low")
             issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
             self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
             self._send_simple(injector, self.PDF_TYPES, basename + "Mal", content, redownload=True)
@@ -2718,7 +2723,7 @@ trailer <<
                            "burp collaborator URL. This means that Server Side Request Forgery might be possible " \
                            "or that a user downloaded the file and opened it in Adobe reader. <br><br> {} <br>" \
                            "Interactions:<br><br>".format(base_detail)
-            issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Firm", "Low")
+            issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Tentative", "Low")
             issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
             self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
             self._send_simple(injector, self.PDF_TYPES, basename + "Mal", content, redownload=True)
@@ -2747,7 +2752,7 @@ trailer <<
                        "burp collaborator URL. This means that Server Side Request Forgery might be possible " \
                        "or that a user downloaded the file and opened it in on Windows. <br><br> {} <br>" \
                        "Interactions:<br><br>".format(base_detail)
-        issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Certain", "Low")
+        issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Tentative", "Low")
         issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
         self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
         self._send_simple(injector, self.URL_TYPES, basename + "Mal", content, redownload=True)
@@ -2766,7 +2771,7 @@ trailer <<
             for software_name, payload in (("Excel", "=cmd|' /C {} {}'!A0"), ("OpenOffice", '=DDE("cmd";"/C {} {}";"__DdeLink_60_870516294")')):
                 basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "Csv" + software_name
                 formula = payload.format("nslookup", "unknown.domain.example.org")
-                issue = self._create_issue_template(injector.get_brr(), title, desc.format(formula, software_name), "Certain", "Low")
+                issue = self._create_issue_template(injector.get_brr(), title, desc.format(formula, software_name), "Tentative", "Low")
                 # Do simple upload/download based
                 self.dl_matchers.add(DownloadMatcher(issue, filecontent=formula))
                 self._send_simple(injector, self.CSV_TYPES, basename + "Mal", formula, redownload=True)
@@ -2870,7 +2875,7 @@ trailer <<
                    "downloaded. When this spreadsheet is opened in Microsoft Excel, and the user confirms several " \
                    "dialogues warning about code execution, the Windows calculator will open (RCE). See " \
                    "https://www.contextis.com/resources/blog/comma-separated-vulnerabilities/ for more details."
-            issue = self._create_issue_template(injector.get_brr(), title, desc, "Certain", "Low")
+            issue = self._create_issue_template(injector.get_brr(), title, desc, "Tentative", "Low")
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=content_excel))
             self._send_simple(injector, self.EXCEL_TYPES, basename, content_excel, redownload=True)
             # TODO feature: Burp collaborator based for Excel format...
@@ -2881,7 +2886,7 @@ trailer <<
                'Microsoft Excel, and the user confirms dialogues warning or the server automatically parses it, a ' \
                'server is contacted. See https://twitter.com/subTee/status/631509345918783489 for more details.'
         content = 'WEB\r\n1\r\n{}["a","Please Enter Your Password"]'.format(BurpExtender.MARKER_COLLAB_URL)
-        issue = self._create_issue_template(injector.get_brr(), title, desc, "Firm", "Low")
+        issue = self._create_issue_template(injector.get_brr(), title, desc, "Tentative", "Low")
         self.dl_matchers.add(DownloadMatcher(issue, filecontent=content))
         self._send_simple(injector, self.IQY_TYPES, basename + "Mal", content, redownload=True)
         if burp_colab:
