@@ -859,7 +859,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                         # download in a HTTP message. Therefore we can use "return" after adding a scan issue.
                         return
         except:
-            self.show_error_popup(traceback.format_exc())
+            # I had enough of being the exception collector of processHttpMessage and python lib quirks...
+            # no alerting of the user in this case anymore
             raise sys.exc_info()[1], None, sys.exc_info()[2]
 
     def _create_download_scan_issue(self, base_request_response, issue):
