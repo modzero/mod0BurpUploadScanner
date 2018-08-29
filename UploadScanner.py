@@ -496,6 +496,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             print "Deserializing settings..."
             self.deserialize_settings()
 
+
         # It is important these registrations are done at the end, so the global_lock is freed.
         # Otherwise when still deserializing and using the context menu at the same time there
         # has been a global Burp thread-lock where I had to force quit Burp :(
@@ -587,43 +588,53 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             print "Deleted all settings..."
 
     def deserialize_settings(self):
-        k = self.load_project_setting("UploadScanner_dl_matchers")
-        if k:
-            dm = pickle.loads(k.decode("base64"))
-            if dm:
-                self.dl_matchers.deserialize(dm)
+        try:
+            k = self.load_project_setting("UploadScanner_dl_matchers")
+            if k:
+                dm = pickle.loads(k.decode("base64"))
+                if dm:
+                    self.dl_matchers.deserialize(dm)
 
-        # TODO Burp API limitation: IBurpCollaboratorClientContext persistence
-        #k = self.load_project_setting("UploadScanner_collab_monitor")
-        #if k:
-        #    cm = pickle.loads(k.decode("base64"))
-        #    self.collab_monitor.deserialize(cm)
+            # TODO Burp API limitation: IBurpCollaboratorClientContext persistence
+            #k = self.load_project_setting("UploadScanner_collab_monitor")
+            #if k:
+            #    cm = pickle.loads(k.decode("base64"))
+            #    self.collab_monitor.deserialize(cm)
 
-        k = self.load_project_setting("UploadScanner_tabs")
-        if k:
-            tabs = pickle.loads(k.decode("base64"))
-            if tabs:
-                for option_panel in tabs:
-                    # right part, create with dummy request first first
-                    sc = ScanController(CustomRequestResponse('', '', CustomHttpService('https://example.org'), '', ''), self._callbacks)
-                    # left part, options
-                    # add a reference to the ScanController to the options
-                    options = OptionsPanel(self, self._callbacks, self._helpers, scan_controler=sc)
-                    # Take all settings from the serialized object (also recursively changes ScanController)
-                    options.deserialize(option_panel)
-                    self.create_tab(options, sc)
+            k = self.load_project_setting("UploadScanner_tabs")
+            if k:
+                tabs = pickle.loads(k.decode("base64"))
+                if tabs:
+                    for option_panel in tabs:
+                        # right part, create with dummy request first first
+                        sc = ScanController(CustomRequestResponse('', '', CustomHttpService('https://example.org'), '', ''), self._callbacks)
+                        # left part, options
+                        # add a reference to the ScanController to the options
+                        options = OptionsPanel(self, self._callbacks, self._helpers, scan_controler=sc)
+                        # Take all settings from the serialized object (also recursively changes ScanController)
+                        options.deserialize(option_panel)
+                        self.create_tab(options, sc)
 
-        k = self._callbacks.loadExtensionSetting("UploadScanner_global_opts")
-        if k:
-            cm = pickle.loads(k.decode("base64"))
-            if cm:
-                self._global_opts.deserialize(cm)
+            k = self._callbacks.loadExtensionSetting("UploadScanner_global_opts")
+            if k:
+                cm = pickle.loads(k.decode("base64"))
+                if cm:
+                    self._global_opts.deserialize(cm)
+            print "Restored settings..."
+        except:
+            e = traceback.format_exc()
+            print "An error occured when deserializing settings. We just ignore the serialized data therefore."
+            print e
 
-        print "Restored settings..."
-        self.save_project_setting("UploadScanner_dl_matchers", "")
-        # TODO Burp API limitation: IBurpCollaboratorClientContext persistence
-        #self.save_project_setting("UploadScanner_collab_monitor", None)
-        self.save_project_setting("UploadScanner_tabs", "")
+        try:
+            self.save_project_setting("UploadScanner_dl_matchers", "")
+            # TODO Burp API limitation: IBurpCollaboratorClientContext persistence
+            #self.save_project_setting("UploadScanner_collab_monitor", None)
+            self.save_project_setting("UploadScanner_tabs", "")
+        except:
+            e = traceback.format_exc()
+            print "An error occured when storing empty serialize data We just ignore it for now."
+            print e
 
     def save_project_setting(self, name, value):
         request = """GET /"""+name+""" HTTP/1.0
@@ -724,7 +735,6 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             f = file("BappManifest.bmf", "rb").readlines()
             for line in f:
                 if line.startswith("ScreenVersion: "):
-                    print line
                     error_details += "\n" + line.replace("ScreenVersion", "Upload Scanner Version")
                     break
         except:
