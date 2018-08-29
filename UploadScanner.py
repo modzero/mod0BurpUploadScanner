@@ -734,6 +734,12 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             error_details += "\nJava version: " + System.getProperty("java.version")
         except:
             print "Could not find Jython/Java version..."
+        try:
+            error_details += "\nBurp version: " + " ".join([x for x in self._callbacks.getBurpVersion()])
+            error_details += "\nCommand line arguments: " + " ".join([x for x in self._callbacks.getCommandLineArguments()])
+            error_details += "\nWas loaded from BApp: " + str(self._callbacks.isExtensionBapp())
+        except:
+            print "Could not find Burp details..."
         self._no_of_errors += 1
         if self._no_of_errors < 2:
             full_msg = 'The Burp extension "Upload Scanner" just crashed. The details of the issue are at the bottom. \n' \
