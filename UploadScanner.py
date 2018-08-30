@@ -3936,8 +3936,14 @@ trailer <<
         new_req += BurpExtender.NEWLINE * 2
 
         new_req = new_req.replace("${RANDOMIZE}", str(random.randint(100000000000, 999999999999)))
-        attack = self._callbacks.makeHttpRequest(service, new_req)
-        resp = attack.getResponse()
+        try:
+            # In Burp 2.0 makeHttpRequest might throw an burp.byc, which is an obfuscated ScanRequestTimedOutException,
+            # but it used to just return an empty response on timeout...
+            # see https://github.com/modzero/mod0BurpUploadScanner/issues/21
+            attack = self._callbacks.makeHttpRequest(service, new_req)
+            resp = attack.getResponse()
+        except:
+            resp = None
         if resp and create_log:
             # create a new log entry with the message details
             self.add_log_entry(attack)
@@ -4110,8 +4116,14 @@ trailer <<
         base_request_response = injector.get_brr()
         service = base_request_response.getHttpService()
         # print "_make_http_request", service
-        attack = self._callbacks.makeHttpRequest(service, req)
-        resp = attack.getResponse()
+        try:
+            # In Burp 2.0 makeHttpRequest might throw an burp.byc, which is an obfuscated ScanRequestTimedOutException,
+            # but it used to just return an empty response on timeout...
+            # see https://github.com/modzero/mod0BurpUploadScanner/issues/21
+            attack = self._callbacks.makeHttpRequest(service, req)
+            resp = attack.getResponse()
+        except:
+            resp = None
         if resp:
             resp = FloydsHelpers.jb2ps(resp)
             upload_rr = CustomRequestResponse('', '', service, req, resp)
@@ -8487,7 +8499,14 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         if msg:
             # print "_test_preflight_thread", self.scan_controler.preflight_req_service
             msg = msg.replace("${RANDOMIZE}", str(random.randint(100000000000, 999999999999)))
-            resp = self._callbacks.makeHttpRequest(self.scan_controler.preflight_req_service, msg).getResponse()
+            try:
+                # In Burp 2.0 makeHttpRequest might throw an burp.byc, which is an obfuscated ScanRequestTimedOutException,
+                # but it used to just return an empty response on timeout...
+                # see https://github.com/modzero/mod0BurpUploadScanner/issues/21
+                a = self._callbacks.makeHttpRequest(self.scan_controler.preflight_req_service, msg)
+                resp = a.getResponse()
+            except:
+                resp = None
             # print "Testing preflight ", self.scan_controler.preflight_req_service
             if resp:
                 resp = FloydsHelpers.jb2ps(resp)
@@ -8513,7 +8532,14 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         if msg and self.scan_controler.redownload_req_service:
             # print "_test_configuration_thread", self.scan_controler.redownload_req_service
             msg = msg.replace("${RANDOMIZE}", str(random.randint(100000000000, 999999999999)))
-            resp = self._callbacks.makeHttpRequest(self.scan_controler.redownload_req_service, msg).getResponse()
+            try:
+                # In Burp 2.0 makeHttpRequest might throw an burp.byc, which is an obfuscated ScanRequestTimedOutException,
+                # but it used to just return an empty response on timeout...
+                # see https://github.com/modzero/mod0BurpUploadScanner/issues/21
+                a = self._callbacks.makeHttpRequest(self.scan_controler.redownload_req_service, msg)
+                resp = a.getResponse()
+            except:
+                resp = None
             if resp:
                 resp = FloydsHelpers.jb2ps(resp)
                 self.scan_controler.set_redownload_resp(resp)
@@ -8883,7 +8909,14 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
             if service and req:
                 req = req.replace("${RANDOMIZE}", str(random.randint(100000000000, 999999999999)))
                 # Overwrite the upload response to be parsed with the preflight response to be parsed:
-                r = self._callbacks.makeHttpRequest(service, req).getResponse()
+                try:
+                    # In Burp 2.0 makeHttpRequest might throw an burp.byc, which is an obfuscated ScanRequestTimedOutException,
+                    # but it used to just return an empty response on timeout...
+                    # see https://github.com/modzero/mod0BurpUploadScanner/issues/21
+                    a = self._callbacks.makeHttpRequest(service, req)
+                    r = a.getResponse()
+                except:
+                    r = None
                 if r:
                     preflight_rr = CustomRequestResponse('', '', service, req, r)
                     resp = FloydsHelpers.jb2ps(r)
@@ -8907,7 +8940,14 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 # such as "fingerping", then we need to return this to the module
                 # print "redownloader_try_redownload 2", service
                 req = req.replace("${RANDOMIZE}", str(random.randint(100000000000, 999999999999)))
-                r = self._callbacks.makeHttpRequest(service, req).getResponse()
+                try:
+                    # In Burp 2.0 makeHttpRequest might throw an burp.byc, which is an obfuscated ScanRequestTimedOutException,
+                    # but it used to just return an empty response on timeout...
+                    # see https://github.com/modzero/mod0BurpUploadScanner/issues/21
+                    a = self._callbacks.makeHttpRequest(service, req)
+                    r = a.getResponse()
+                except:
+                    r = None
                 if r:
                     download_rr = CustomRequestResponse('', '', service, req, r)
                 else:
