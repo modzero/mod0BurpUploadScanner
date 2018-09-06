@@ -4748,7 +4748,6 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                 print "MultipartInjector insertion point found for getInsertionPoint ActiveScan!"
                 insertionPoint = CustomMultipartInsertionPoint(self._helpers, BurpExtender.NEWLINE, req)
                 injector = MultipartInjector(base_request_response, self._global_opts, insertionPoint, self._helpers, BurpExtender.NEWLINE)
-
             elif self._global_opts.fi_ofilename:
                 fi = FlexiInjector(base_request_response, self._global_opts, self._helpers, BurpExtender.NEWLINE)
                 # We test only those requests where we find at least the content in the request as some implementations
@@ -4785,10 +4784,94 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                             kwargs = {"techniques": [(name, cmd_line_args, [format, ]), ]}
                             function = bf.get_exiftool_images
                             insertion_points.append(InsertionPointForActiveScan(injector, upload_type, function, args, kwargs))
+
+                # Now the feature that we can detect CSVs
+                insertion_points.extend(self._get_csv_insertion_points(injector))
         except:
             self.burp_extender.show_error_popup(traceback.format_exc())
             raise sys.exc_info()[1], None, sys.exc_info()[2]
         return insertion_points
+
+    def _get_csv_insertion_points(self, injector):
+        filename = injector.get_uploaded_filename().lower()
+        insertion_points = []
+        if ".csv" in filename or ".txt" in filename:
+            file_content = injector.get_uploaded_content()
+            if "\r\n" in file_content:
+                new_line = "\r\n"
+            else:
+                new_line = "\n"
+            lines = file_content.split(new_line)
+            for delim in [",", ";", "\t"]:
+                if delim in file_content:
+                    # The first line in a CSV can be special (header)
+                    # We choose it at the beginning, but prefer actually any other line in the CSV to inject
+                    # We want to inject into the line with the most delimiters
+                    line_index = 0
+                    no_of_delim = 0
+                    for i, line in enumerate(lines[1:]):
+                        if line.count(delim) > no_of_delim:
+                            line_index = i + 1
+                            no_of_delim = line.count(delim)
+
+                    # This might produce *a lot* of insertion points
+                    for field_index in range(0, no_of_delim + 1):
+                        insertion_points.append(CsvInsertionPoint(injector, new_line, delim, line_index, field_index))
+        return insertion_points
+
+class CsvInsertionPoint(IScannerInsertionPoint):
+    def __init__(self, injector, new_line, delim, line_index, field_index):
+        self.injector = injector
+        self.new_line = new_line
+        self.delim = delim
+        self.line_index = line_index
+        self.field_index = field_index
+
+        self.lines = injector.get_uploaded_content().split(self.new_line)
+        self.fields = self.lines[self.line_index].split(self.delim)
+
+    def _create_request(self, payload):
+        fields = copy.copy(self.fields)
+        if fields[self.field_index].startswith('"') and fields[self.field_index].endswith('"'):
+            # Let's assume it is a quoted CSV
+            # RFC-4180, "If double-quotes are used to enclose fields, then a double-quote appearing inside a
+            # field must be escaped by preceding it with another double quote."
+            payload = '"' +payload.replace('"', '""') + '"'
+            fields[self.field_index] = payload
+        else:
+            fields[self.field_index] = payload
+        line = self.delim.join(fields)
+        lines = copy.copy(self.lines)
+        lines[self.line_index] = line
+        content = self.new_line.join(lines)
+        req = self.injector.get_request(self.injector.get_uploaded_filename(), content)
+        return req, payload
+
+    def buildRequest(self, payload):
+        req, _ = self._create_request(FloydsHelpers.jb2ps(payload))
+        return req
+
+    def getBaseValue(self):
+        return self.fields[self.field_index]
+
+    def getInsertionPointName(self):
+        return ""
+
+    def getInsertionPointType(self):
+        # TODO: What's best? Alternatives:
+        # INS_PARAM_BODY
+        # INS_PARAM_MULTIPART_ATTR
+        # INS_UNKNOWN
+        return IScannerInsertionPoint.INS_EXTENSION_PROVIDED
+
+    def getPayloadOffsets(self, payload):
+        payload = FloydsHelpers.jb2ps(payload)
+        req, payload = self._create_request(payload)
+        if payload in req:
+            start = req.index(payload)
+            return [start, start + len(payload)]
+        else:
+            return None
 
 
 class InsertionPointForActiveScan(IScannerInsertionPoint):
