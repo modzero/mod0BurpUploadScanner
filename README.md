@@ -280,7 +280,7 @@ By deactivating modules it is possible to make the extension send less files to 
 
 #### Active Scan module
 
-In the global configuration tab this defines, if request should be created that upload images, pdfs, zip files and so and pass them to Burp's Active Scan (and other extensions) as insertion points. The individual insertion points are the different metadata locations of the files. This means, that Burp (and all other Burp extensions) can do their active scan checks on those uploads. In the global configuration this option is enabled by default.
+In the global configuration tab this defines, if request should be created that upload images, pdfs, zip files and so and pass them to Burp's Active Scan (and other extensions) as insertion points. The individual insertion points are the different metadata locations of the files. This means, that Burp (and all other Burp extensions) can do their active scan checks on those uploads. Additionally, this feature will now also detect if a user uploaded a CSV file and will provide the line with the most values as insertion points to Burp (each field individually) while trying to do escaping for quoted CSV formats. In the global configuration this option is enabled by default.
 
 If you send a request manually to the UploadScanner via context menu, this option will pass the request to the Burp Active Scanner. For context menu invocation options this is disabled by default (as it is assumed that you might have already active scanned this request). If you checked this option in the global options, then the above described scans will be done as well.
 
