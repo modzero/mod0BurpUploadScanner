@@ -869,7 +869,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 
                         # As the matcher was now triggered, we can remove it as it should not trigger again,
                         # because every attack defines its own matcher
-                        self.dl_matchers.remove(url, matcher)
+                        self.dl_matchers.remove_reported(url, matcher)
 
                         # At maximum there will be 1 scan issue per message, as it is unlikely that there is more than 1
                         # download in a HTTP message. Therefore we can use "return" after adding a scan issue.
@@ -4123,7 +4123,9 @@ trailer <<
                     resp = self._make_http_request(injector, req, throttle=False)
                 if resp and time.time() - start > timeout_detection_time:
                     # found a timeout, let's confirm with a changed request so it doesn't get a cached response
-                    print "TIMEOUT DETECTED! Now checking if really a timeout or just a random timeout"
+                    print "TIMEOUT DETECTED! Now checking if really a timeout or just a random timeout. " \
+                          "Request leading to first timeout was:"
+                    print repr(req)
                     if randomize:
                         number = str(i) + ''.join(random.sample(string.ascii_letters, 3))
                     else:
@@ -4146,6 +4148,8 @@ trailer <<
                             self._add_scan_issue(csi)
                             # Returning here is an option, but actually knowing all different kind of injections is nicer
                             # return
+                        else:
+                            print "Unfortunately, this seems to be a false positive... not reporting"
 
     def _create_issue_template(self, base_request_response, name, detail, confidence, severity):
         service = base_request_response.getHttpService()
@@ -6839,10 +6843,16 @@ class DownloadMatcherCollection(object):
         dl_matcher = DownloadMatcher(issue, filecontent="tEXtdate:create")
         self._global_matchers.add(dl_matcher)
 
-    def with_global(self, matchers):
+    def with_global(self, name, matchers):
         g = set()
         g.update(matchers)
-        g.update(self._global_matchers)
+        for m in self._global_matchers:
+            if not name in m.reported_for:
+                for alt_name in self._scope_mapping[name]:
+                    if alt_name in m.reported_for:
+                        break
+                else:
+                    g.add(m)
         return g
 
     def add_scope(self, brr_url, url):
@@ -6865,12 +6875,12 @@ class DownloadMatcherCollection(object):
         with self._thread_lock:
             if hostport in self._collection:
                 # print "Found DownloadMatchers", hostport, "that correspond to", url
-                return self.with_global(self._collection[hostport])
+                return self.with_global(hostport, self._collection[hostport])
 
             name = self.get_scope(hostport)
             if name:
                 # print "Found DownloadMatchers for", name, "that can be used for", url
-                return self.with_global(self._collection[name])
+                return self.with_global(name, self._collection[name])
         return []
 
     def get_scope(self, hostport):
@@ -6879,17 +6889,22 @@ class DownloadMatcherCollection(object):
                 if name in self._collection:
                     return name
 
-    def remove(self, url, matcher):
+    def remove_reported(self, url, matcher):
         with self._thread_lock:
             hostport = self._get_host(url)
+            if matcher in self._global_matchers:
+                matcher.reported_for.append(hostport)
+                return
             if hostport in self._collection:
                 if matcher in self._collection[hostport]:
                     self._collection[hostport].remove(matcher)
+                    return
             else:
                 name = self.get_scope(hostport)
                 if name and name in self._collection:
                     if matcher in self._collection[name]:
                         self._collection[name].remove(matcher)
+                        return
 
     def _get_host(self, url):
         if not url:
@@ -6979,6 +6994,9 @@ class DownloadMatcher(object):
 
         self.content_type_header_marker = "content-type:"
         self.content_disposition_header_marker = "content-disposition: attachment"
+
+        # Special case to keep track where global matchers were reported already
+        self.reported_for = []
 
     def __hash__(self):
         return hash((self.issue.name,
