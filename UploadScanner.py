@@ -3204,16 +3204,18 @@ trailer <<
         confidence = "Tentative"
         print "Fingerping module was able to download", str(number_of_responses), \
             "of", str(len(FingerpingImages.all_images)), "images as PNGs again"
-        if number_of_responses < 10:
-            # This is guesswork, no point in making an issue, stop here
-            print "Fingerping: Could download less than 10 images, not making a fingerping issue"
-            return
-        elif number_of_responses > 50:
-            confidence = "Certain"
-        elif number_of_responses > 40:
-            confidence = "Firm"
         results, fingerprintScores = f.do_tests(downloads, True)
-        result_table = f.get_results_table(fingerprintScores)
+        text_score, total = f.get_results_table(fingerprintScores)
+        highest_score = text_score[-1][1]
+        score_percentage = float(highest_score) / total
+
+        if score_percentage > 0.6:
+            confidence = "Certain"
+        elif score_percentage > 0.85:
+            confidence = "Firm"
+
+        result_table = "<br>".join([text + " " + str(score) + "/" + str(total) for text, score in text_score])
+
         title = "Fingerping Fingerprinting results"
         desc = "The fingerping tool is able to fingerprint images libraries that modify a set of png files that are " \
                "uploaded. The original project by Dominique Bongard is located at https://github.com/0xcite/fingerping " \
@@ -3231,7 +3233,7 @@ trailer <<
                 "together with the exact version of the image library on the server. Please also make sure " \
                 "that the common error case does not apply." \
                "<br><br>{}".format(str(number_of_responses), str(len(FingerpingImages.all_images)),
-                               result_table.replace("\n", "<br>"), repr(results))
+                               result_table, repr(results))
         issue = self._create_issue_template(injector.get_brr(), title, desc, confidence, "Information")
         self._add_scan_issue(issue)
 
@@ -6755,12 +6757,9 @@ class Fingerping:
 
     def get_results_table(self, scores):
         """Show the fingerprinting result with the most likely library match at the bottom"""
-        res = ''
         nb = len(self.all_tests)
-        ordered = sorted(scores.iteritems(), key=lambda x: x[1])
-        for result in ordered:
-            res += '{:20s} {:3d}/{:3d}'.format(result[0], result[1], nb) + "\n"
-        return res
+        text_score = sorted(scores.iteritems(), key=lambda x: x[1])
+        return text_score, nb
 # end modules
 
 
