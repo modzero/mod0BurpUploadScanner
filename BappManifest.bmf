@@ -3,7 +3,7 @@ ExtensionType: 2
 Name: Upload Scanner
 RepoName: upload-scanner
 ScreenVersion: 1.0.5
-SerialVersion: 6
+SerialVersion: 7
 MinPlatformVersion: 0
 ProOnly: True
 Author: Tobias 'floyd' Ospelt, modzero AG
