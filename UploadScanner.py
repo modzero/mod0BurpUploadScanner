@@ -4082,7 +4082,6 @@ trailer <<
                            replace=None, randomize=True):
         colab_tests = []
         types = injector.get_types(all_types)
-        print types
         i = 0
         for prefix, ext, mime_type in types:
             break_when_done = False
