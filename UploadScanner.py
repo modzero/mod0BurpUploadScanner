@@ -1982,7 +1982,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         urrs = self._send_simple(injector, self.HTACCESS_TYPES, htaccess, content, redownload=True, randomize=False)
         # We only need to do this for one, not for all
         urr = urrs[0]
-        if urr.download_rr:
+        if urr and urr.download_rr:
             url = FloydsHelpers.u2s(self._helpers.analyzeRequest(urr.download_rr).getUrl().toString())
             try:
                 path = urlparse.urlparse(url).path
@@ -4885,6 +4885,9 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
             if injector:
                 # First the feature that we can detect CSVs
                 insertion_points.extend(self.get_csv_insertion_points(injector))
+                
+                # TODO: Make an insertion provider that puts payloads into the image as text, to pwn OCR software as in
+                # https://medium.com/@vishwaraj101/ocr-to-xss-42720d85f7fa
 
                 # Then handle the zip files
                 bf = BackdooredFile(None, tool=self._opts.image_exiftool)
