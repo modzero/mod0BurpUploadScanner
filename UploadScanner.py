@@ -3299,7 +3299,7 @@ trailer <<
         random_part = ''.join(random.sample(string.ascii_letters, 3))
 
         file_extension = FloydsHelpers.u2s(injector.get_default_file_ext())
-        semicolon_ie = BurpExtender.DOWNLOAD_ME + "Semicolon"+random_part+".exe;" + file_extension
+        semicolon_ie = BurpExtender.DOWNLOAD_ME + "Semicolon" + random_part+".exe;" + file_extension
         title = "Semicolon in Content-Disposition"
         desc = 'Internet explorer might interprete a HTTP response header of Content-Disposition: attachment; filename="evil_file.exe;.txt" as an exe file. ' + \
                "A filename of " + semicolon_ie + " was uploaded and detected that it's possible to download a file named " + BurpExtender.MARKER_URL_CONTENT + " ."
@@ -3311,11 +3311,11 @@ trailer <<
         if req:
             self._make_http_request(injector, req, redownload_filename=semicolon_ie)
 
-        nulltruncate = BurpExtender.DOWNLOAD_ME + "Nulltruncate"+random_part+".exe\x00" + file_extension
+        nulltruncate = BurpExtender.DOWNLOAD_ME + "Nulltruncate" + random_part + ".exe\x00" + file_extension
         title = "Null byte filename truncate"
         desc = 'A filename of ' + cgi.escape(nulltruncate) + " (including a truncating zero byte after .exe) was uploaded and detected that it's possible to download a file named " + BurpExtender.MARKER_URL_CONTENT + " ."
         issue = self._create_issue_template(base_request_response, title, desc, "Certain", "Low")
-        exp = BurpExtender.DOWNLOAD_ME + "Nulltruncate"+random_part+".exe"
+        exp = BurpExtender.DOWNLOAD_ME + "Nulltruncate" + random_part + ".exe"
         self.dl_matchers.add(DownloadMatcher(issue, filename_content_disposition=exp,
                                              not_in_filename_content_disposition=file_extension))
         self.dl_matchers.add(DownloadMatcher(issue, url_content=exp, not_in_url_content=file_extension, filecontent=orig_content))
@@ -3323,7 +3323,7 @@ trailer <<
         if req:
             self._make_http_request(injector, req, redownload_filename=exp)
 
-        backspace = BurpExtender.DOWNLOAD_ME + "Backspace"+random_part+".exe" + file_extension + "\x08" * len(file_extension)
+        backspace = BurpExtender.DOWNLOAD_ME + "Backspace" + random_part + ".exe" + file_extension + "\x08" * len(file_extension)
         title = "Backspace filename truncate"
         desc = "We uploaded a filename of " + backspace + " (having the 0x08 backspace character several time at the end) and detected that it's possible to download a file named " + BurpExtender.MARKER_URL_CONTENT + " ."
         issue = self._create_issue_template(base_request_response, title, desc, "Certain", "Low")
@@ -4019,6 +4019,8 @@ trailer <<
             yield "Nslookup", "nslookup", "test.example.org", "test.example.org"
 
     def _get_sleep_commands(self, injector):
+        # TODO: If the injector.options.sleep_time is less or equal 0, how about not yielding anything to preven sleep
+        # payloads being sent?
         # Format: name, command, factor, args
         # Unix
         yield "Sleep", "sleep", 1, ""
@@ -4279,7 +4281,11 @@ class FloydsHelpers(object):
 
     @staticmethod
     def file_extension(insertionPoint):
-        return os.path.splitext(insertionPoint.getBaseValue())[1]
+        base_value = insertionPoint.getBaseValue()
+        if base_value:  # getBaseValue() returns None in rare cases
+            return FloydsHelpers.u2s(os.path.splitext(base_value)[1])
+        else:
+            return ''
 
     @staticmethod
     def mime_type_from_ext(ext):
@@ -4631,7 +4637,7 @@ class MultipartInjector(Injector):
         self._insertionPoint = insertionPoint
         self._helpers = helpers
         self._newline = newline
-        self._default_file_extension = FloydsHelpers.u2s(os.path.splitext(self._insertionPoint.getBaseValue())[1]) or ''
+        self._default_file_extension = FloydsHelpers.file_extension(self._insertionPoint) or ''
         # print "self._default_file_extension", self._default_file_extension
 
     def get_uploaded_content(self):
@@ -4660,7 +4666,11 @@ class MultipartInjector(Injector):
 
     def get_uploaded_filename(self):
         # print "type self._insertionPoint.getBaseValue()", type(self._insertionPoint.getBaseValue())
-        return FloydsHelpers.u2s(self._insertionPoint.getBaseValue())
+        base_value = self._insertionPoint.getBaseValue()
+        if base_value: # getBaseValue() might be None in rare cases
+            return FloydsHelpers.u2s(base_value)
+        else:
+            return ''
 
     def get_request(self, filename, content, content_type=None):
         attack = FloydsHelpers.jb2ps(self._insertionPoint.buildRequest(filename))
