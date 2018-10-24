@@ -360,7 +360,7 @@ This module uploads a PDF file that includes JavaScript that could be executed i
 The other SSRF module will upload files that can be used to achieve other Server Side Request Forgeries that are not covered in other modules. Currently, this module only uploads .URL files, which might lead to SSRF SMB connections on Windows if opened.
 
 #### CSV/spreadsheet module
-This module uploads malicious CSV and spreadsheet (Microsoft Excel) files as described on the [contextis blog](https://www.contextis.com//resources/blog/comma-separated-vulnerabilities/). If the files can be downloaded again, an issue is added to Burp.
+This module uploads malicious CSV and spreadsheet (Microsoft Excel) files as described on the [contextis blog](https://www.contextis.com//resources/blog/comma-separated-vulnerabilities/). If the files can be downloaded again, an issue is added to Burp. Additionally, it will detect if an uploaded file was a CSV file. If that is the case, it detect the delimeter, look for the line with the most values and provide each value as an insertion point to the Burp active scanner.
 
 #### Path traversal module
 Uploads zip files that have path traversal payloads in the filenames of the zip file entries. A little a shot in the dark as I haven't seen a zip implementation unpacking zip files resulting in path traversal vulnerabilities, but you never know. This could be helpful if a server unpacks zip files.
