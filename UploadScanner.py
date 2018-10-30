@@ -737,13 +737,14 @@ class BurpExtender(IBurpExtender, IScannerCheck,
     def getUiComponent(self):
         return self._main_jtabedpane
 
-    def show_error_popup(self, error_details):
+    def show_error_popup(self, error_details, location, brr):
         try:
             f = file("BappManifest.bmf", "rb").readlines()
             for line in f:
                 if line.startswith("ScreenVersion: "):
                     error_details += "\n" + line.replace("ScreenVersion", "Upload Scanner Version")
                     break
+            error_details += "\nExtension code location: " + location
         except:
             print "Could not find plugin version..."
         try:
@@ -767,13 +768,28 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                        'Do you want to open a github issue with the details below now? \n' \
                        'Details: \n{}\n'.format(FloydsHelpers.u2s(error_details))
             response = JOptionPane.showConfirmDialog(self._global_opts, full_msg, full_msg,
-                                                     JOptionPane.YES_NO_OPTION)  # 'The Burp extension "Upload Scanner" just crashed'
+                                                     JOptionPane.YES_NO_OPTION)
             if response == JOptionPane.YES_OPTION:
+                # Ask if it would also be OK to send the request
+                request_msg = "Is it OK to send along the following request? If you click 'No' this request will not \n" \
+                              "be sent, but please consider submitting an anonymized/redacted version of the request \n" \
+                              "along with the bug report. \n"
+                request_content = repr(FloydsHelpers.jb2ps(brr.getRequest()))
+                if len(request_content) > 1500:
+                    request_content = request_content[:1500] + "..."
+                request_msg += request_content
+                response = JOptionPane.showConfirmDialog(self._global_opts, request_msg, request_msg,
+                                                         JOptionPane.YES_NO_OPTION)
+                if response == JOptionPane.YES_OPTION:
+                    error_details += "\nRequest: " + request_content
+                else:
+                    error_details += "\nRequest: None"
+
                 if Desktop.isDesktopSupported():
                     desktop = Desktop.getDesktop()
                     if desktop.isSupported(Desktop.Action.BROWSE):
                         github = "https://github.com/modzero/mod0BurpUploadScanner/issues/new?title=UploadScanner%20bug" \
-                                 "&body=" + urllib.quote("```\n"+error_details+"\n```")
+                                 "&body=" + urllib.quote("```\n" + error_details + "\n```")
                         desktop.browse(URI(github))
                     #if desktop.isSupported(Desktop.Action.MAIL):
                     #    mailto = "mailto:burpplugins" + 'QGZsb3lkLmNo'.decode("base64") + "?subject=UploadScanner%20bug"
@@ -927,7 +943,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 else:
                     print "This is not a type file but something else in a multipart message:", insertionPoint.getInsertionPointName()
         except:
-            self.show_error_popup(traceback.format_exc())
+            self.show_error_popup(traceback.format_exc(), "doActiveScan", base_request_response)
             if options and options.redl_enabled:
                 options.scan_was_stopped()
             raise sys.exc_info()[1], None, sys.exc_info()[2]
@@ -966,7 +982,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 print "You did not specify the file you are going to upload, no FlexiInjector checks will be done"
                 self._warned_flexiinjector = True
         except:
-            self.show_error_popup(traceback.format_exc())
+            self.show_error_popup(traceback.format_exc(), "run_flexiinjector", base_request_response)
             if fi and fi.opts.redl_enabled:
                 fi.opts.scan_was_stopped()
             raise sys.exc_info()[1], None, sys.exc_info()[2]
@@ -4928,7 +4944,7 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                             function = bf.get_exiftool_images
                             insertion_points.append(InsertionPointForActiveScan(injector, upload_type, function, args, kwargs))
         except:
-            self.burp_extender.show_error_popup(traceback.format_exc())
+            self.burp_extender.show_error_popup(traceback.format_exc(), "getInsertionPoints", base_request_response)
             raise sys.exc_info()[1], None, sys.exc_info()[2]
         return insertion_points
 
@@ -6862,10 +6878,11 @@ class DownloadMatcherCollection(object):
     def add(self, dl_matcher):
         brr = dl_matcher.issue.get_base_request_response()
         iRequestInfo = self._helpers.analyzeRequest(brr)
-        url = FloydsHelpers.u2s(iRequestInfo.getUrl().toString())
-        host = self.add_collection(url)
-        with self._thread_lock:
-            self._collection[host].add(dl_matcher)
+        if iRequestInfo.getUrl():
+            url = FloydsHelpers.u2s(iRequestInfo.getUrl().toString())
+            host = self.add_collection(url)
+            with self._thread_lock:
+                self._collection[host].add(dl_matcher)
 
     def add_collection(self, url):
         host = self._get_host(url)
