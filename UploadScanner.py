@@ -89,6 +89,7 @@ import urlparse  # urlparser for custom HTTP services
 import zipfile  # to create evil zip files in memory
 import sys  # to show detailed exception traces
 import traceback  # to show detailed exception traces
+import textwrap  # to wrap request texts after a certain amount of chars
 import binascii  # for the fingerping module
 import zlib  # for the fingerping module
 import itertools  # for the fingerping module
@@ -773,8 +774,11 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 # Ask if it would also be OK to send the request
                 request_msg = "Is it OK to send along the following request? If you click 'No' this request will not \n" \
                               "be sent, but please consider submitting an anonymized/redacted version of the request \n" \
-                              "along with the bug report. \n"
-                request_content = repr(FloydsHelpers.jb2ps(brr.getRequest()))
+                              "along with the bug report, as otherwise a root cause analysis is likely not possible. \n" \
+                              "You can also find this request in the Extender tab in the UploadScanner Output tab. \n\n"
+                request_content = textwrap.fill(repr(FloydsHelpers.jb2ps(brr.getRequest())), 100)
+                print request_content
+
                 if len(request_content) > 1500:
                     request_content = request_content[:1500] + "..."
                 request_msg += request_content
