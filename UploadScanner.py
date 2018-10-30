@@ -58,6 +58,7 @@ from java.awt import GridBagConstraints
 from java.awt import Image
 from java.awt import Desktop
 from java.awt import Dimension
+from java.awt import RenderingHints
 from java.awt.event import ActionListener
 from java.awt.image import BufferedImage
 from java.io import ByteArrayOutputStream
@@ -2208,7 +2209,8 @@ Response.write(a&c&b)
         colab_tests.extend(self._send_collaborator(injector, burp_colab, self.RB_TYPES, basename, content_ruby, issue_colab,
                                                    redownload=True, replace="test.example.org"))
 
-        # TODO feature: elf binary .cgi files? But if those work, then Python or Perl works in most cases too...
+        # Not going to add as a feature: elf binary .cgi files
+        # If those work, then Python or Perl works in most cases too...
 
         return colab_tests
 
@@ -2224,7 +2226,7 @@ Response.write(a&c&b)
         confidence = "Certain"
 
         # Reflected nslookup
-        # TODO feature: This might fail if the DNS is responding with default DNS entries, then it won't say "can't find" and the
+        # This might fail if the DNS is responding with default DNS entries, then it won't say "can't find" and the
         # domain but I couldn't come up with anything better for SSI except Burp collaborator payloads and this...
         # At least "can't find" + domain is present in Linux and Windows nslookup output
         main_detail = "A certain string was dectected when uploading and downloading an Server Side Include file with a " \
@@ -2617,7 +2619,7 @@ Response.write(a&c&b)
 
     def _pdf(self, injector, burp_colab):
 
-        # TODO: Look if this should be implemented: http://michaeldaw.org/backdooring-pdf-files
+        # TODO: Check if this should be implemented: http://michaeldaw.org/backdooring-pdf-files
 
         colab_tests = []
 
@@ -3046,9 +3048,9 @@ trailer <<
             colab_tests.extend(self._send_collaborator(injector, burp_colab, self.IQY_TYPES, basename + "Colab",
                                                        content, issue, redownload=True))
 
-        # TODO Burp API limitation: We could include a Link in a spreadsheet document and hope/wait for someone to click and then detect it via
-        # Burp Collaborator. However, as long as we have the Burp API limitation of not being able to keep collaborator
-        # interactions for a long time as an extension, there is no point.
+        # TODO Burp API limitation: We could include a Link in a spreadsheet document and hope/wait for someone
+        # to click and then detect it via Burp Collaborator. However, as long as we have the Burp API limitation
+        # of not being able to keep collaborator interactions for a long time as an extension, there is no point.
         return colab_tests
 
     def _path_traversal_archives(self, injector):
@@ -4039,13 +4041,13 @@ trailer <<
             yield "Nslookup", "nslookup", "test.example.org", "test.example.org"
 
     def _get_sleep_commands(self, injector):
-        # TODO: If the injector.options.sleep_time is less or equal 0, how about not yielding anything to preven sleep
-        # payloads being sent?
-        # Format: name, command, factor, args
-        # Unix
-        yield "Sleep", "sleep", 1, ""
-        # Windows
-        yield "Ping", "ping -n", 2, " localhost"
+        if injector.opts.sleep_time > 0:
+            # payloads being sent?
+            # Format: name, command, factor, args
+            # Unix
+            yield "Sleep", "sleep", 1, ""
+            # Windows
+            yield "Ping", "ping -n", 2, " localhost"
 
     def _send_get_request(self, brr, relative_url, create_log):
         # Simply tries to send brr but as a GET request and to a different URL
@@ -4883,11 +4885,12 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
             self._opts = opts
             self._helpers = helpers
         self.exiftool_techniques = [
-            # TODO: Maybe uncomment some more? This takes quiet a while to scan...
             # See BackdooredFiles for details... we don't use the thumbnail technique.
             ("keywords", "-keywords=", [".pdf", ".mp4" ]),
             ("comment", "-comment=", [".gif", ".jpeg", ".png"]),
             # We don't do iptckeywords as it's limited to 64 characters and ActiveScan will produce longer payloads
+            # and there is a Burp limitation that we can not return a "sorry, can't produce a request with this long
+            # payload"
             # ("iptckeywords", "-iptc:keywords=", [".jpeg", ".tiff"]),
             ("xmpkeywords", "-xmp:keywords=", [".gif", ".jpeg", ".pdf", ".png", ".tiff", ".mp4"]),
             ("exifImageDescription", "-exif:ImageDescription=", [".jpeg", ".tiff"]),
@@ -4916,8 +4919,9 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                 # First the feature that we can detect CSVs
                 insertion_points.extend(self.get_csv_insertion_points(injector))
                 
-                # TODO: Make an insertion provider that puts payloads into the image as text, to pwn OCR software as in
+                # Insertion provider that puts payloads into the image as text, to pwn OCR software as in
                 # https://medium.com/@vishwaraj101/ocr-to-xss-42720d85f7fa
+                insertion_points.extend(self.get_inverse_ocr_insertion_points(injector))
 
                 # Then handle the zip files
                 bf = BackdooredFile(None, tool=self._opts.image_exiftool)
@@ -4947,6 +4951,7 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                             kwargs = {"techniques": [(name, cmd_line_args, [format, ]), ]}
                             function = bf.get_exiftool_images
                             insertion_points.append(InsertionPointForActiveScan(injector, upload_type, function, args, kwargs))
+                # TODO: How about we also try to download the files we created InsertionPoints payloads for...?
         except:
             self.burp_extender.show_error_popup(traceback.format_exc(), "getInsertionPoints", base_request_response)
             raise sys.exc_info()[1], None, sys.exc_info()[2]
@@ -4979,6 +4984,96 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                         insertion_points.append(CsvInsertionPoint(injector, new_line, delim, line_index, field_index))
         return insertion_points
 
+    def get_inverse_ocr_insertion_points(self, injector):
+        insertion_points = []
+        for file_type in ["png", "jpeg"]:
+            insertion_points.append(ReverseOcrInsertionPoint(injector, file_type))
+        return insertion_points
+
+class ReverseOcrInsertionPoint(IScannerInsertionPoint):
+    def __init__(self, injector, file_type):
+        self.injector = injector
+        self.file_type = file_type
+        self.width = injector.opts.image_width
+        self.height = injector.opts.image_height
+        self.index = 0
+
+    def _create_text_image(self, text):
+        img = BufferedImage(1, 1, BufferedImage.TYPE_INT_ARGB)
+        g2d = img.createGraphics()
+        font = Font("Arial", Font.PLAIN, 100)
+        g2d.setFont(font)
+        fm = g2d.getFontMetrics()
+        width = fm.stringWidth(text)
+        height = fm.getHeight()
+        g2d.dispose()
+
+        img = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+        g2d = img.createGraphics()
+        g2d.setRenderingHint(RenderingHints.KEY_ALPHA_INTERPOLATION, RenderingHints.VALUE_ALPHA_INTERPOLATION_QUALITY)
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+        g2d.setRenderingHint(RenderingHints.KEY_COLOR_RENDERING, RenderingHints.VALUE_COLOR_RENDER_QUALITY)
+        g2d.setRenderingHint(RenderingHints.KEY_DITHERING, RenderingHints.VALUE_DITHER_ENABLE)
+        g2d.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON)
+        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+        g2d.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE)
+        g2d.setFont(font)
+        fm = g2d.getFontMetrics()
+        g2d.setColor(Color.BLACK)
+        g2d.drawString(text, 0, fm.getAscent())
+        g2d.dispose()
+
+        # From the documentation of Java Image:
+        # If either width or height is a negative number then a value is substituted to maintain the aspect
+        # ratio of the original image dimensions.
+        rescaled = img
+        if img.getWidth() >= self.width:
+            rescaled = img.getScaledInstance(self.width - 6, -1, Image.SCALE_DEFAULT)
+        newImage = BufferedImage(self.width, self.height, BufferedImage.TYPE_INT_ARGB)
+        g = newImage.getGraphics()
+        g.drawImage(rescaled, 3, 3, None)
+        g.dispose()
+        img = newImage
+
+        output_stream = ByteArrayOutputStream()
+        ImageIO.write(img, self.file_type, output_stream)
+        output = FloydsHelpers.jb2ps(output_stream.toByteArray())
+        return output
+
+    def create_request(self, payload):
+        content = self._create_text_image(payload)
+        req = self.injector.get_request("ActiveScanOcrAttack" + str(self.index) + "." + self.file_type, content)
+        self.index += 1
+        return req, payload, content
+
+    def buildRequest(self, payload):
+        req, _, _ = self.create_request(FloydsHelpers.jb2ps(payload))
+        return req
+
+    def getBaseValue(self):
+        # A blank image
+        return ""
+
+    def getInsertionPointName(self):
+        return ""
+
+    def getInsertionPointType(self):
+        # TODO: What's best? Alternatives:
+        # INS_PARAM_BODY
+        # INS_PARAM_MULTIPART_ATTR
+        # INS_UNKNOWN
+        return IScannerInsertionPoint.INS_EXTENSION_PROVIDED
+
+    def getPayloadOffsets(self, payload):
+        payload = FloydsHelpers.jb2ps(payload)
+        req, payload, _ = self.create_request(payload)
+        if payload in req:
+            start = req.index(payload)
+            return [start, start + len(payload)]
+        else:
+            return None
+
 class CsvInsertionPoint(IScannerInsertionPoint):
     def __init__(self, injector, new_line, delim, line_index, field_index):
         self.injector = injector
@@ -4990,13 +5085,15 @@ class CsvInsertionPoint(IScannerInsertionPoint):
         self.lines = injector.get_uploaded_content().split(self.new_line)
         self.fields = self.lines[self.line_index].split(self.delim)
 
+        self.index = 0
+
     def create_request(self, payload):
         fields = copy.copy(self.fields)
         if fields[self.field_index].startswith('"') and fields[self.field_index].endswith('"'):
             # Let's assume it is a quoted CSV
             # RFC-4180, "If double-quotes are used to enclose fields, then a double-quote appearing inside a
             # field must be escaped by preceding it with another double quote."
-            payload = '"' +payload.replace('"', '""') + '"'
+            payload = '"' + payload.replace('"', '""') + '"'
             fields[self.field_index] = payload
         else:
             fields[self.field_index] = payload
@@ -5004,7 +5101,8 @@ class CsvInsertionPoint(IScannerInsertionPoint):
         lines = copy.copy(self.lines)
         lines[self.line_index] = line
         content = self.new_line.join(lines)
-        req = self.injector.get_request(self.injector.get_uploaded_filename(), content)
+        req = self.injector.get_request("ActiveScanCsvAttack" + str(self.index) + self.injector.get_uploaded_filename()[-4:], content)
+        self.index += 1
         return req, payload, content
 
     def buildRequest(self, payload):
@@ -5055,6 +5153,7 @@ class InsertionPointForActiveScan(IScannerInsertionPoint):
                 self.insertion_point_name = "FileContent" + name + ext[1:]
         except StopIteration:
             print "Error: No file created in constructor of InsertionPointForActiveScan, this is probably pretty bad."
+        self.index = 0
 
     def _create_content(self, payload):
         payload_func = lambda: (payload, None)
@@ -5070,7 +5169,8 @@ class InsertionPointForActiveScan(IScannerInsertionPoint):
             payload, expect, name, ext, content = self._create_content(payload)
             if content:
                 prefix, ext, mime_type = self.upload_type
-                random_part = ''.join(random.sample(string.ascii_letters, 5))
+                random_part = str(self.index)
+                self.index += 1
                 filename = prefix + "ActiveScan" + self.insertion_point_name + random_part + ext
                 req = self.injector.get_request(filename, content, content_type=mime_type)
                 if req:
@@ -5364,9 +5464,13 @@ class BackdooredFile:
             i = ImageIO.read(inputStream)
             if i:  # ImageIO returns None if the file couldn't be parse (eg. tiff for JDK < 1.9)
                 thumbnail = i.getScaledInstance(size[0], size[1], Image.SCALE_FAST)
-                bufferedThumbnail = BufferedImage(thumbnail.getWidth(None), thumbnail.getHeight(None),
+                # TODO: Basically here we throw all the content away and just generate a new image with the right
+                # sizes, so in most cases, passing content to this function is pointless. Once tiff is supported
+                # in Java, remove all those hard coded small images maybe? Although there is this once techniquey
+                # in the tiff file...
+                buffered_image = BufferedImage(thumbnail.getWidth(None), thumbnail.getHeight(None),
                                                   BufferedImage.TYPE_INT_RGB)
-                g = bufferedThumbnail.getGraphics()
+                g = buffered_image.getGraphics()
                 # Color the picture in a random color. We do this so we can nicely see in Burp rendering that
                 # the color changes during the uploads for every file type
                 # This used to be up to 0xFFFFFFFE, but then we get:
@@ -5375,7 +5479,7 @@ class BackdooredFile:
                 color = random.randint(1, 2147483600)
                 for w in range(0, size[0]):
                     for h in range(0, size[1]):
-                        bufferedThumbnail.setRGB(int(w), int(h), int(color))
+                        buffered_image.setRGB(int(w), int(h), int(color))
 
                 output_stream = ByteArrayOutputStream()
                 # m, output_path = tempfile.mkstemp(suffix=ext)
@@ -5383,7 +5487,7 @@ class BackdooredFile:
                 # os.remove(output_path)
                 # filepath = File(output_path)
                 # output_stream = FileOutputStream(filepath)
-                ImageIO.write(bufferedThumbnail, ext[1:], output_stream)
+                ImageIO.write(buffered_image, ext[1:], output_stream)
                 # output = file(output_path, "rb").read()
                 # os.remove(output_path)
                 output = FloydsHelpers.jb2ps(output_stream.toByteArray())
@@ -8084,8 +8188,8 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         self.fi_filemime = ''
 
         # Options ImageFormating:
-        self.image_height = 200
-        self.image_width = 200
+        self.image_height = 800
+        self.image_width = 800
 
         if self._global_options:
             self.image_exiftool = "exiftool"
