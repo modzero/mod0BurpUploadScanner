@@ -48,6 +48,7 @@ from javax.swing import JOptionPane
 from javax.swing import JMenuItem
 from javax.swing import AbstractAction
 from javax.swing import BorderFactory
+from javax.swing import SwingConstants
 from javax.swing.table import AbstractTableModel
 from javax.swing.event import DocumentListener
 from java.awt import Font
@@ -547,21 +548,16 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         self._global_opts = OptionsPanel(self, self._callbacks, self._helpers, global_options=True)
 
         # README
-        self._aboutJPanel = JTextPane()
-        self._aboutJPanel.setContentType("text/html")
-        self._aboutJPanel.setText(Readme.get_readme(BurpExtender.DOWNLOAD_ME, BurpExtender.REDL_FILENAME_MARKER))
-        self._aboutJPanel.setEditable(False)
-        self._aboutJPanel.setBackground(None)
-        self._aboutJPanel.setBorder(None)
+        self._aboutJLabel = JLabel(Readme.get_readme(), SwingConstants.CENTER)
 
         self._callbacks.customizeUiComponent(self._main_jtabedpane)
         self._callbacks.customizeUiComponent(self._splitpane)
         self._callbacks.customizeUiComponent(self._global_opts)
-        self._callbacks.customizeUiComponent(self._aboutJPanel)
+        self._callbacks.customizeUiComponent(self._aboutJLabel)
 
         self._main_jtabedpane.addTab("Global & Active Scanning configuration", None, JScrollPane(self._global_opts), None)
         self._main_jtabedpane.addTab("Done uploads", None, self._splitpane, None)
-        self._main_jtabedpane.addTab("About", None, JScrollPane(self._aboutJPanel), None)
+        self._main_jtabedpane.addTab("About", None, JScrollPane(self._aboutJLabel), None)
 
         self._callbacks.addSuiteTab(self)
 
@@ -9356,14 +9352,12 @@ class CloseableTab(JPanel, ActionListener):
 
 class Readme:
     @staticmethod
-    def get_readme(dl_me, redl_marker):
-        about = """<html style="width:500px; text-align: center"><br>
-Author: Tobias "floyd" Ospelt, <a href="https://twitter.com/floyd_ch">@floyd_ch</a>,
-<a href="https://www.floyd.ch">https://www.floyd.ch</a> of modzero AG, <a href="https://twitter.com/mod0">@mod0</a>,
-<a href="https://www.modzero.ch">https://www.modzero.ch</a><br>
+    def get_readme():
+        about = """<html>Author: Tobias "floyd" Ospelt, @floyd_ch, https://www.floyd.ch<br>
+modzero AG, @mod0, https://www.modzero.ch<br>
 <br>
 A Burp Suite Pro extension to do security tests for HTTP file uploads.<br>
-<br>For more information see <a href="https://github.com/modzero/mod0BurpUploadScanner/">https://github.com/modzero/mod0BurpUploadScanner/</a>
+For more information see https://github.com/modzero/mod0BurpUploadScanner/
 </html>
 """
         return about
