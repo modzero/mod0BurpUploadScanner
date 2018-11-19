@@ -736,6 +736,20 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         return self._main_jtabedpane
 
     def show_error_popup(self, error_details, location, brr):
+        if "OutOfMemoryError: java.lang.OutOfMemoryError" in error_details:
+            full_msg = "Your Burp ran out of memory (RAM). This is a fatal issue and was detected by the UploadScanner " \
+                       "extension. As there is no way to recover from this, UploadScanner is now going to unload " \
+                       "itself, hopefully freeing up some memory for you. Please restart Burp with more memory " \
+                       "allocated as described under '9. Burp runs out of memory.' on " \
+                       "https://support.portswigger.net/customer/portal/articles/1965913-troubleshooting . Basically " \
+                       "you have to start Burp with a larger -Xmx argument. Other strategies might be starting a new " \
+                       "Burp project, loading less extensions or processing less requests in general. Press 'OK' to " \
+                       "unload the UploadScanner extension."
+            response = JOptionPane.showConfirmDialog(self._global_opts, full_msg, "Out of memory",
+                                                     JOptionPane.OK_CANCEL_OPTION)
+            if response == JOptionPane.OK_OPTION:
+                self._callbacks.unloadExtension()
+            return
         try:
             f = file("BappManifest.bmf", "rb").readlines()
             for line in f:
@@ -845,8 +859,16 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             # This can get computationally expensive if there are a lot of files that were uploaded...
             # ... make sure we only scan responses and if we have any matcher rules
             if not messageIsRequest:
-                if len(base_request_response.getResponse()) >= BurpExtender.MAX_RESPONSE_SIZE:
+                resp = base_request_response.getResponse()
+                if not resp:
+                    print "processHttpMessage called with BaseRequestResponse with no response. Ignoring."
+                    return
+                if len(resp) >= BurpExtender.MAX_RESPONSE_SIZE:
                     # Don't look at responses longer than MAX_RESPONSE_SIZE
+                    return
+                req = base_request_response.getRequest()
+                if not req:
+                    print "processHttpMessage called with BaseRequestResponse with no request. Ignoring."
                     return
                 iRequestInfo = self._helpers.analyzeRequest(base_request_response)
                 #print type(iRequestInfo.getUrl().toString()), repr(iRequestInfo.getUrl().toString())
@@ -901,6 +923,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         except:
             # I had enough of being the exception collector of processHttpMessage and python lib quirks...
             # no alerting of the user in this case anymore
+            #self.show_error_popup(traceback.format_exc(), "processHttpMessage", base_request_response)
             raise sys.exc_info()[1], None, sys.exc_info()[2]
 
     def _create_download_scan_issue(self, base_request_response, issue):
@@ -936,6 +959,10 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             # Also see getInsertionPoints
             if insertionPoint.getInsertionPointType() == IScannerInsertionPoint.INS_PARAM_MULTIPART_ATTR:
                 if insertionPoint.getInsertionPointName() == "filename":
+                    req = base_request_response.getRequest()
+                    if not req:
+                        print "doActiveScan called with BaseRequestResponse with no request. Ignoring."
+                        return
                     print "Multipart filename found!"
                     if not options:
                         options = self._global_opts
@@ -951,20 +978,28 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 
     # Implement IScannerInsertionPointProvider
     def getInsertionPoints(self, base_request_response):
-        # TODO Burp API limitation: Is there another way to simply say "each active scanned HTTP request once"?
-        # it seems not: https://support.portswigger.net/customer/en/portal/questions/16776337-confusion-on-insertionpoints-active-scan-module?new=16776337
-        # So we are going to abuse a functionality of Burp called IScannerInsertionPoint
-        # which is by coincidence always called once per request for every actively scanned item (with base_request_response)
-        # this is an ugly hack...
-        if "content-type: multipart/form-data" in FloydsHelpers.jb2ps(base_request_response.getRequest()).lower():
-            print "It seems to be a mutlipart/form-data we don't need to check with the FlexiInjector"
-        else:
-            self.run_flexiinjector(base_request_response)
-        # Now after the above hack, do what this function actually does, return insertion points
-        if self._global_opts.modules['activescan'].isSelected():
-            return InsertionPointProviderForActiveScan(self, self._global_opts, self._helpers).getInsertionPoints(base_request_response)
-        else:
-            return []
+        try:
+            # TODO Burp API limitation: Is there another way to simply say "each active scanned HTTP request once"?
+            # it seems not: https://support.portswigger.net/customer/en/portal/questions/16776337-confusion-on-insertionpoints-active-scan-module?new=16776337
+            # So we are going to abuse a functionality of Burp called IScannerInsertionPoint
+            # which is by coincidence always called once per request for every actively scanned item (with base_request_response)
+            # this is an ugly hack...
+            req = base_request_response.getRequest()
+            if not req:
+                # print "getInsertionPoints was called with a BaseRequestResponse where the Request was None/null..."
+                return
+            if "content-type: multipart/form-data" in FloydsHelpers.jb2ps(req).lower():
+                print "It seems to be a mutlipart/form-data we don't need to check with the FlexiInjector"
+            else:
+                self.run_flexiinjector(base_request_response)
+            # Now after the above hack, do what this function actually does, return insertion points
+            if self._global_opts.modules['activescan'].isSelected():
+                return InsertionPointProviderForActiveScan(self, self._global_opts, self._helpers).getInsertionPoints(base_request_response)
+            else:
+                return []
+        except:
+            self.show_error_popup(traceback.format_exc(), "doActiveScan", base_request_response)
+            raise sys.exc_info()[1], None, sys.exc_info()[2]
 
     def run_flexiinjector(self, base_request_response, options=None):
         fi = None
@@ -1020,6 +1055,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 colab_tests.extend(self._imagetragick_cve_2016_3714_rce(injector, burp_colab))
                 self.collab_monitor_thread.add_or_update(burp_colab, colab_tests)
                 self._imagetragick_cve_2016_3714_sleep(injector)
+                
             # Magick (ImageMagick and GraphicsMagick) - generic, as these are exploiting features
             if injector.opts.modules['magick'].isSelected():
                 print "\nDoing Image-/GraphicsMagick checks"
@@ -5473,8 +5509,8 @@ class BackdooredFile:
                 # setRGB(): 3rd arg can't be coerced to int, probably because Java's MAX_INT
                 # is 2147483647. As explained here: https://stackoverflow.com/questions/6001211/format-of-type-int-rgb-and-type-int-argb#6001276
                 color = random.randint(1, 2147483600)
-                for w in range(0, size[0]):
-                    for h in range(0, size[1]):
+                for w in range(0, min(size[0], 100)):
+                    for h in range(0, min(size[1], 100)):
                         buffered_image.setRGB(int(w), int(h), int(color))
 
                 output_stream = ByteArrayOutputStream()
