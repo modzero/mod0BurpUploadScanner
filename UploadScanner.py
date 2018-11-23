@@ -6387,8 +6387,8 @@ class Xbm(object):
         xbm += "#define {}_height {}\n".format(self.name, height)
         xbm += "static char {}_bits[] = {{\n".format(self.name)
         no_of_bytes = (width * height) / 8
-        #xbm += "  0x80000001, " #  the value causing the overflow, from orig PoC
-        xbm += "  0xffffffff, "
+        xbm += "  0x80000001, " #  the value causing the overflow, from orig PoC
+        #xbm += "  0xffffffff, "
         first_line = "0x00, " * (bytes_per_line - 1)
         xbm += first_line + "\n"
         no_of_bytes -= bytes_per_line
