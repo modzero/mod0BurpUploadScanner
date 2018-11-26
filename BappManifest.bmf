@@ -2,8 +2,8 @@ Uuid: b2244cbb6953442cb3c82fa0a0d908fa
 ExtensionType: 2
 Name: Upload Scanner
 RepoName: upload-scanner
-ScreenVersion: 1.0.7
-SerialVersion: 9
+ScreenVersion: 1.0.8
+SerialVersion: 10
 MinPlatformVersion: 0
 ProOnly: True
 Author: Tobias 'floyd' Ospelt, modzero AG
