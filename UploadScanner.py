@@ -653,18 +653,16 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             print e
 
     def save_project_setting(self, name, value):
-        request = """GET /"""+name+""" HTTP/1.0
-        # You can ignore this item in the site map. It was created by the UploadScanner extension.
-        # The reason is that the Burp API is missing a certain functionality to save settings.
-        # TODO Burp API limitation: This is a hackish way to be able to store project-scope settings
-        # We don't want to restore requests/responses of tabs in a totally different Burp project
-        # However, unfortunately there is no saveExtensionProjectSetting in the Burp API :(
-        # So we have to abuse the addToSiteMap API to store project-specific things
-
-        # Even when using this hack we currently cannot persist Collaborator interaction checks
-        # (IBurpCollaboratorClientContext is not serializable and Threads loose their Python class
-        # functionality when unloaded) due to Burp API limitations.
-        """
+        request = "GET /"+name+" HTTP/1.0\r\n\r\n" \
+                  "You can ignore this item in the site map. It was created by the UploadScanner extension. The \n" \
+                  "reason is that the Burp API is missing a certain functionality to save settings. \n" \
+                  "TODO Burp API limitation: This is a hackish way to be able to store project-scope settings.\n" \
+                  "We don't want to restore requests/responses of tabs in a totally different Burp project.\n" \
+                  "However, unfortunately there is no saveExtensionProjectSetting in the Burp API :(\n" \
+                  "So we have to abuse the addToSiteMap API to store project-specific things\n" \
+                  "Even when using this hack we currently cannot persist Collaborator interaction checks\n" \
+                  "(IBurpCollaboratorClientContext is not serializable and Threads loose their Python class\n" \
+                  "functionality when unloaded) due to Burp API limitations."
         response = None
         if value:
             response = "HTTP/1.1 200 OK\r\n" + value
