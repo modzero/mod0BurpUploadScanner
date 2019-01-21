@@ -862,6 +862,39 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                                self._helpers.analyzeRequest(rr).getUrl()))
             self.fireTableRowsInserted(row, row)
 
+    # Function to calculate image entropy via compressing redownloaded images
+    def _calculate_image_entropy(self, injector, urr):
+        
+        iResponseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
+        body = FloydsHelpers.jb2ps(urr.download_rr.getResponse())[iResponseInfo.getBodyOffset():]
+
+        service = urr.download_rr.getHttpService()
+        url = self._helpers.analyzeRequest(urr.download_rr).getUrl()
+
+        try:
+            rgbs = ImageHelpers.get_image_rgb_list(body)
+            conv = "".join([struct.pack("<I",i) for i in rgbs])
+            compressed = zlib.compress(conv, 9)
+            ratio = len(rgbs*4)/len(compressed)
+
+            name = "Downloaded image entropy info"
+            severity = "Information"
+            confidence = "Firm"
+            detail = "Information about the every redownloaded image entropy. <br> " \
+                     "If the compression ratio is too low, that could mean that the image contains memory leak.<br><br> " \
+                     "RGB numbers before compression:<b> {} </b><br> " \
+                     "RGB numbers after compression:<b> {} </b><br> " \
+                     "Compression ratio:<b> {} </b><br>".format(len(rgbs)*4, len(compressed), ratio)
+
+            csi = CustomScanIssue([injector.get_brr()], name, detail, confidence, severity, service, url)
+            csi.httpMessagesPy = [urr.upload_rr, urr.download_rr]
+            # Using direct call to burp callback, to reduce noise in the output logs.
+            self._callbacks.addScanIssue(csi)
+
+        except:
+            print "Could not get image entropy."
+    
+
     # Implement IHttpListener
     def processHttpMessage(self, _, messageIsRequest, base_request_response):
         try:
@@ -890,6 +923,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 # ... do not scan things that are not "in scope" (see DownloadMatcherCollection class)
                 # means we only check if we uploaded stuff to that host or the user configured
                 # another host in the ReDownloader options that is therefore also "in scope"
+
                 matchers = self.dl_matchers.get_matchers_for_url(url)
                 if not matchers:
                     #We hit this for all not "in scope" requests
@@ -4388,6 +4422,14 @@ trailer <<
                 preflight_rr, download_rr = injector.opts.redownloader_try_redownload(resp, redownload_filename)
                 urr.preflight_rr = preflight_rr
                 urr.download_rr = download_rr
+
+                # Calculating image entropy
+                if injector.opts.calculate_entropy:
+                    download_responseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
+                    headers = [FloydsHelpers.u2s(x) for x in download_responseInfo.getHeaders()]
+                    if any("image/" in h for h in headers):
+                        self._calculate_image_entropy(injector, urr)
+
                 if injector.opts.create_log:
                     # create a new log entry with the message details
                     if urr.preflight_rr:
@@ -8418,6 +8460,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         # Options general:
         self.throttle_time = 0.0
         self.sleep_time = 6.0
+        self.calculate_entropy = False
         self.create_log = False
         self.replace_filename = True
         self.replace_ct = True
@@ -8497,6 +8540,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
 
         serialized_object['throttle_time'] = self.throttle_time
         serialized_object['sleep_time'] = self.sleep_time
+        serialized_object['calculate_entropy'] = self.calculate_entropy
         serialized_object['create_log'] = self.create_log
         serialized_object['replace_filename'] = self.replace_filename
         serialized_object['replace_ct'] = self.replace_ct
@@ -8565,6 +8609,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         # This "if" is necessary to be backward compatible (the old serialized object does not have this attribute)
         if 'sleep_time' in serialized_object:
             self.tf_sleep_time.setText(str(serialized_object['sleep_time']))
+        self.cb_calculate_entropy.setSelected(serialized_object['calculate_entropy'])
         self.cb_create_log.setSelected(serialized_object['create_log'])
         self.cb_replace_filename.setSelected(serialized_object['replace_filename'])
         self.cb_replace_ct.setSelected(serialized_object['replace_ct'])
@@ -8764,6 +8809,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                                                                                 text=self.image_exiftool)
         self.lbl_throttle_time, self.tf_throttle_time = self.small_tf("Throttle between requests in seconds:", str(self.throttle_time))
         self.lbl_sleep_time, self.tf_sleep_time = self.small_tf("Sleep time for sleep payloads in seconds:", str(self.sleep_time))
+        _, self.cb_calculate_entropy = self.checkbox('Calculate entropy for images:', self.calculate_entropy)
         _, self.cb_create_log = self.checkbox('Create log, see "Done uploads" tab:', self.create_log)
         _, self.cb_replace_filename = self.checkbox('Replace filename in requests:', self.replace_filename)
         _, self.cb_replace_ct = self.checkbox('Replace content type in requests:', self.replace_ct)
@@ -8906,7 +8952,8 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         except ValueError:
             self.sleep_time = 6.0
             OptionsPanel.mark_misconfigured(self.lbl_sleep_time)
-
+        
+        self.calculate_entropy = self.cb_calculate_entropy.isSelected()
         self.create_log = self.cb_create_log.isSelected()
         self.replace_filename = self.cb_replace_filename.isSelected()
         self.replace_ct = self.cb_replace_ct.isSelected()
