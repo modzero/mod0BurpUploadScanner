@@ -152,6 +152,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
     REDL_FILENAME_MARKER = "${FILENAME}"
     PYTHON_STR_MARKER_START = "${PYTHONSTR:"
     PYTHON_STR_MARKER_END = "}"
+    IMAGE_ENTROPY_CSI = []
 
     # Implement IBurpExtender
     def registerExtenderCallbacks(self, callbacks):
@@ -888,11 +889,10 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 
             csi = CustomScanIssue([injector.get_brr()], name, detail, confidence, severity, service, url)
             csi.httpMessagesPy = [urr.upload_rr, urr.download_rr]
-            # Using direct call to burp callback, to reduce noise in the output logs.
-            self._callbacks.addScanIssue(csi)
+            return csi, ratio
 
         except:
-            print "Could not get image entropy."
+            return None, None
     
 
     # Implement IHttpListener
@@ -1225,6 +1225,20 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 
         # Just to make sure (maybe we write a new module above and forget this call):
         self.collab_monitor_thread.add_or_update(burp_colab, colab_tests)
+
+        # Calculating image entropy is done after all the scans are compleated
+        if not scan_was_stopped and injector.opts.calculate_entropy:
+            ratios = []
+            # Calculates the median of the compression ratios
+            for csi, ratio in self.IMAGE_ENTROPY_CSI:
+                ratios.append(ratio)
+            median = self._median(ratios)
+
+            print "Reporting Image entropies"
+            for csi, ratio in self.IMAGE_ENTROPY_CSI:
+                if ratio < median:
+                    self._callbacks.addScanIssue(csi)
+            self.IMAGE_ENTROPY_CSI = []
 
         # DoSing the server is best done at the end when we already know about everything else...
         # Timeout and DoS - generic
@@ -4164,6 +4178,17 @@ trailer <<
                     csi = self._create_issue_template(brr, title, desc, "Tentative", "Medium")
                     self._add_scan_issue(csi)
 
+
+    # Helper function to calculate median
+    def _median(self, lst):
+        n = len(lst)
+        if n < 1:
+            return None
+        if n % 2 == 1:
+            return sorted(lst)[n//2]
+        else:
+            return sum(sorted(lst)[n//2-1:n//2+1])/2.0
+
     # Helper functions
     def _filename_to_expected(self, filename):
         # TODO feature: maybe try to download both?
@@ -4428,7 +4453,9 @@ trailer <<
                     download_responseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
                     headers = [FloydsHelpers.u2s(x) for x in download_responseInfo.getHeaders()]
                     if any("image/" in h for h in headers):
-                        self._calculate_image_entropy(injector, urr)
+                        csi, ratio = self._calculate_image_entropy(injector, urr)
+                        if csi is not None:
+                            self.IMAGE_ENTROPY_CSI.append([csi, ratio])
 
                 if injector.opts.create_log:
                     # create a new log entry with the message details
