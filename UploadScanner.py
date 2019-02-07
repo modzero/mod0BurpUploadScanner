@@ -919,7 +919,25 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                             else:
                                 issue_copy.detail = issue_copy.detail.replace(BurpExtender.MARKER_URL_CONTENT,
                                                                               "UNKNOWN")
-
+                        if matcher.check_xss:
+                            content_disposition = False
+                            for header in headers:
+                                if header.lower().startswith("content-disposition: attachment"):
+                                    # This is a special case for "Content-Disposition: attachment" handling
+                                    desc = "<br><br>This response includes the 'Content-Disposition: attachment' header. " \
+                                           "This means the file is not shown inline, but downloaded in browsers. " \
+                                           "So this might be unexploitable. However, as there were so many bypasses " \
+                                           "for this in the past, this is still flagged as an issue. Certain old " \
+                                           "browsers could still be convinced into inlining the file and therefore " \
+                                           "execute the XSS payload. Moreover, browser plugins (flash/pdf/Java) might " \
+                                           "also not honor the Content-Disposition header. There have also been browser " \
+                                           "bugs that allowed executing the XSS. Moreover, an HTTP header injection can " \
+                                           "be used to still execute the XSS. See " \
+                                           "https://markitzeroday.com/xss/bypass/2018/04/17/defeating-content-disposition.html" \
+                                           " for further information."
+                                    issue_copy.detail += desc
+                                    issue_copy.severityPy = "Tentative"
+                                    break
                         self._create_download_scan_issue(base_request_response, issue_copy)
 
                         # As the matcher was now triggered, we can remove it as it should not trigger again,
@@ -2695,7 +2713,6 @@ Response.write(a&c&b)
                    'There might be other issues with file uploads that allow .swf uploads, for example https://hackerone.com/reports/51265 .'
             issue = self._create_issue_template(injector.get_brr(), title, desc, "Firm", "Medium")
             # TODO feature: Check if other content_types work too rather than only application/x-shockwave-flash...
-            # TODO feature: Also, check_xss means the swf can not be delivered with Content-Disposition: attachment... correct?
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=content, check_xss=True))
             self._send_simple(injector, self.SWF_TYPES, basename, content, redownload=True)
         return []
@@ -3472,7 +3489,7 @@ trailer <<
         title = "Backspace filename truncate"
         desc = "We uploaded a filename of " + backspace + " (having the 0x08 backspace character several time at the end) and detected that it's possible to download a file named " + BurpExtender.MARKER_URL_CONTENT + " ."
         issue = self._create_issue_template(base_request_response, title, desc, "Certain", "Low")
-        exp = BurpExtender.DOWNLOAD_ME + "Backspace"+random_part+".exe"
+        exp = BurpExtender.DOWNLOAD_ME + "Backspace" + random_part + ".exe"
         self.dl_matchers.add(DownloadMatcher(issue, filename_content_disposition=exp,
                                              not_in_filename_content_disposition=file_extension))
         self.dl_matchers.add(DownloadMatcher(issue, url_content=exp, not_in_url_content=file_extension, filecontent=orig_content))
@@ -3490,10 +3507,10 @@ trailer <<
         expected_filenames = (
             left_to_right,
             BurpExtender.DOWNLOAD_ME + file_extension[::-1] + random_part_reverse + "lefttoright" + ".exe",
-            BurpExtender.DOWNLOAD_ME + "%E2%80%AEexe.thgirottfel"+ random_part + file_extension,
-            BurpExtender.DOWNLOAD_ME + "%e2%80%aeexe.thgirottfel"+ random_part + file_extension,
-            BurpExtender.DOWNLOAD_ME + "%u202Eexe.thgirottfel"+ random_part + file_extension,
-            BurpExtender.DOWNLOAD_ME + "%u202eexe.thgirottfel"+ random_part + file_extension,
+            BurpExtender.DOWNLOAD_ME + "%E2%80%AEexe.thgirottfel" + random_part + file_extension,
+            BurpExtender.DOWNLOAD_ME + "%e2%80%aeexe.thgirottfel" + random_part + file_extension,
+            BurpExtender.DOWNLOAD_ME + "%u202Eexe.thgirottfel" + random_part + file_extension,
+            BurpExtender.DOWNLOAD_ME + "%u202eexe.thgirottfel" + random_part + file_extension,
         )
         for exp in expected_filenames:
             self.dl_matchers.add(DownloadMatcher(issue, filename_content_disposition=exp))
@@ -7429,10 +7446,14 @@ class DownloadMatcher(object):
 
         self.check_xss = check_xss
 
-        # TODO feature: My tests show, that Content-Disposition: attachment prevents XSS... proof me wrong please!
-        if self.check_xss:
+        # My tests show, that Content-Disposition: attachment prevents XSS...
+        # However, this is not an easy question to answer. It depends on browsers, browser plugins,
+        # browser bugs, which filetypes can be uploaded, if you can achieve HTTP header injection, etc.
+        # See https://markitzeroday.com/xss/bypass/2018/04/17/defeating-content-disposition.html
+        # So this means it is not clearly non-exploitable.
+        #if self.check_xss:
             # It can't be a content-disposition: attachment header (otherwise it's downloaded instead of executed)
-            self.check_not_content_disposition = True
+        #    self.check_not_content_disposition = True
         # It must be the correct content-type:
         self.xss_content_types = ["text/", "application/javascript", "image/svg", "application/x-shockwave-flash"]
         # Additionally we could easily also check if X-Content-Type-Options: nosniff is set or not...
