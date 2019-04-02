@@ -4682,6 +4682,7 @@ class BurpCollaborator:
     # As we currently do around 2000 files, where only max. half of them have Collaborator payloads, 33 is fine.
     # Let's be on the safe side and do 34
     FIXED_PAYLOAD_SIZE = 34
+    # *must* be an uppercase letter
     PADDING_CHAR = "N"
 
     # A IBurpCollaboratorClientContext object that also knows if the
@@ -4731,13 +4732,10 @@ class BurpCollaborator:
                 payload = payload + "/" + (padding - 1) * BurpCollaborator.PADDING_CHAR
             else:
                 # DNS Form: payload.burpcollaborator.net
-                # We create: NNNNN.payload.burpcollaborator.net
-                if padding == 1:
-                    # Because .payload.burpcollaborator.net  is invalid but
-                    #          payload.burpcollaborator.net. isn't
-                    payload += "."
-                else:
-                    payload = (padding - 1) * BurpCollaborator.PADDING_CHAR + "." + payload
+                # We create: NNNpayload.burpcollaborator.net
+                # Do *not* use a dot between NNN and payload as the
+                # Collaborator TLS certificate is not valid for such a domain
+                payload = padding * BurpCollaborator.PADDING_CHAR + payload
         return payload
 
     def remove_padding(self, payload):
@@ -4750,10 +4748,8 @@ class BurpCollaborator:
                 payload = payload[:-1]
         else:
             # DNS Form: payload.burpcollaborator.net
+            # This works because Burp Collaborator payload never contains upper case characters
             while payload.startswith(BurpCollaborator.PADDING_CHAR):
-                payload = payload[1:]
-            if payload.startswith("."):
-                # Remove / as well:
                 payload = payload[1:]
         return payload
 
@@ -4841,6 +4837,12 @@ class FlexiInjector(Injector):
             # one line base64: alphanum, %2B, %2F
             lambda x: urllib.quote(x.encode("base64").replace('\n', '').replace('\r', '').strip()),
             # one line base64: alphanum, %2B, /
+            
+            lambda x: x.encode("base64").replace('\n', '').replace('\r', '').strip().rstrip('='),  # one line base64: alphanum, +, / but missing end =
+            lambda x: urllib.quote(x.encode("base64").replace('\n', '').replace('\r', '').strip().rstrip('='), ''),
+            # one line base64: alphanum, %2B, %2F but missing end =
+            lambda x: urllib.quote(x.encode("base64").replace('\n', '').replace('\r', '').strip().rstrip('=')),
+            # one line base64: alphanum, %2B, / but missing end =
         ]
         self._default_file_extension = FloydsHelpers.u2s(os.path.splitext(self.opts.fi_ofilename)[1]) or ''
 
@@ -8625,6 +8627,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
             self.modules[name].setSelected(serialized_object['modules'][name])
 
         if global_to_tab:
+            self.modules['activescan'].setSelected(False)
             self.modules['fingerping'].setSelected(True)
 
         for name in serialized_object['file_formats']:
