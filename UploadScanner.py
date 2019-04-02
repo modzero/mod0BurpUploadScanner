@@ -5025,13 +5025,20 @@ class MultipartInjector(Injector):
                         # print "Replacing old filename", old_filename, "with new", new_filename, "in multipart number", index
                         new_multipart = multipart.replace(old_filename, new_filename)
                         multiparts[index] = new_multipart
-            # Now also take care that a filename in the URL is replaced with the new filename
+            # A filename in the URL is replaced with the new filename
             if self.opts.replace_filename and old_filename and old_filename != new_filename:
                 status_line = status_headers.split(self._newline)[0]
                 headers = self._newline.join(status_headers.split(self._newline)[1:])
                 status_line = status_line.replace(old_filename, urllib.quote(new_filename))
                 status_line = status_line.replace(urllib.quote(old_filename), urllib.quote(new_filename))
                 status_headers = status_line + self._newline + headers
+            # The file size in the URL is replaced with the new filename
+            if self.opts.replace_filesize and old_size > 100 and old_size and old_size != new_size:
+                status_line = status_headers.split(self._newline)[0]
+                if old_size in status_line:
+                    headers = self._newline.join(status_headers.split(self._newline)[1:])
+                    status_line = status_line.replace(old_size, new_size)
+                    status_headers = status_line + self._newline + headers
             # Now finally set the file content
             new = self._set_multipart_content(multiparts[meant_multipart_index], content, content_type)
             if new:
