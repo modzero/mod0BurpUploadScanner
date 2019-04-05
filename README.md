@@ -119,7 +119,7 @@ What's missing is a howto use Burp's Makro and session handling together with Re
 
 This project was developed by Tobias "floyd" Ospelt, @floyd_ch, [https://www.floyd.ch](https://www.floyd.ch) of modzero AG, @mod0, [https://www.modzero.ch](https://www.modzero.ch)
 
-However, we would like to acknowledge that this extension stands on the shoulder of giants. To develop this extension it was necessary to use techniques from all over the Internet. Very often the attacks in this extension simply copy work from other people. We try to acknowledge and reference their work here. If you are not listed on the following list but we used parts of your work, please let us know or send a pull request to add yourself. This list is in the order of how things are used in the code of the extension:
+However, we would like to acknowledge that this extension stands on the shoulder of giants. To develop this extension it was necessary to use techniques from all over the Internet. Very often the attacks in this extension simply copy work from other people. We try to acknowledge and reference their work here. If you are not listed on the following list but we used parts of your work, please let us know or send a pull request to add yourself. This list has no particular order:
 
 * The Python, Jython and Burp developers that make it possible to write this extension at all. Also all other extension developers that let me peak into their code to get ideas to solve problems.
 * [Phil Harvey](https://sno.phy.queensu.ca/~phil/exiftool/) for the exiftool.
@@ -149,6 +149,7 @@ However, we would like to acknowledge that this extension stands on the shoulder
 * [Hanno Boeck](https://blog.fuzzing-project.org/43-PHP-EXIF-parser-out-of-bounds-reads-CVE-2016-4542,-CVE-2016-4543,-CVE-2016-4544-and-a-note-on-custom-memory-allocators.html) for crash files from his fuzzing project.
 * [dutchgraa on hackerone](https://hackerone.com/reports/390) for [two](https://hackerone.com/reports/400) pixel flood attacks.
 * [Russ Cox](https://research.swtch.com/zip) for zip and gz files that contain themselves.
+* [Akhil Reni](https://twitter.com/akhilreni_hs/status/1113762867881185281) for SVG SSRF payloads with an iframe technique.
 
 ## Background information and FAQ
 Background information and FAQ for the UploadScanner extension.

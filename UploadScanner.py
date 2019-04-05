@@ -2519,17 +2519,37 @@ Response.write(a&c&b)
             # External Image with <image xlink
             content_xlink = base_svg.replace(text_tag, '<image height="30" width="30" xlink:href="{}image.jpeg" />'.format(BurpExtender.MARKER_COLLAB_URL))
             basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SvgXlink"
-            name = "XXE/SSRF via SVG" # Xlink"
+            name = "XXE/SSRF via SVG"  # Xlink
             severity = "High"
             confidence = "Certain"
             detail = "A Burp Colaborator interaction was detected when uploading an SVG image with an Xlink reference " \
-                     "which contains a burp colaborator URL. This means that Server Side Request Forgery is possible. " \
-                     'The payload was <image height="30" width="30" xlink:href="{}mage.jpeg" /> . ' + \
+                     "which contains a burp collaborator URL. This means that Server Side Request Forgery is possible. " \
+                     'The payload was <image xlink:href="{}" /> . ' + \
                      "Usually you will be able to read local files, eg. local pictures. " \
                      "Interactions:<br><br>".format(BurpExtender.MARKER_COLLAB_URL)
             issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
             colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SVG_TYPES, basename, content_xlink, issue,
                                                   redownload=True))
+
+            # External iFrame according to https://twitter.com/akhilreni_hs/status/1113762867881185281 and
+            # https://gist.github.com/akhil-reni/5ed75c28a5406c300597431eafcdae2d
+            content_iframe = '<g><foreignObject width="{}" height="{}"><body xmlns="http://www.w3.org/1999/xhtml">' \
+                             '<iframe src="{}"></iframe></body></foreignObject></g>'.format(str(injector.opts.image_width),
+                                                                                            str(injector.opts.image_height),
+                                                                                            BurpExtender.MARKER_COLLAB_URL)
+            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SvgIframe"
+            name = "XXE/SSRF via SVG"  # Iframe
+            severity = "High"
+            confidence = "Certain"
+            detail = "A Burp Colaborator interaction was detected when uploading an SVG image with an iframe reference " \
+                     "which contains a burp collaborator URL. This means that Server Side Request Forgery is possible. " \
+                     'The payload was <iframe src="{}"> . ' + \
+                     "Usually you will be able to read local files, eg. local pictures. " \
+                     "Interactions:<br><br>".format(BurpExtender.MARKER_COLLAB_URL)
+            issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
+            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SVG_TYPES, basename, content_iframe, issue,
+                                                       redownload=True))
+
 
             # What if the server simply reads the SVG and turn it into a JPEG that has the content?
             # That will be hard to detect (would need something like OCR on JPEG), but at least the user
@@ -2559,7 +2579,7 @@ Response.write(a&c&b)
             # Now let's do the generic ones from the Xxe class
             for payload_desc, technique_name, svg in Xxe.get_payloads(base_svg, root_tag, text_tag, 'text'):
                 basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "XxeSvg" + technique_name
-                name = "XXE/SSRF via SVG" # " + technique_name
+                name = "XXE/SSRF via SVG"  # " + technique_name
                 severity = "Medium"
                 confidence = "Certain"
                 detail = "A Burp Colaborator interaction was detected when uploading an SVG image with an " + technique_name + " payload " \
@@ -7054,7 +7074,7 @@ class FingerpingFingerprints:
                              {'Compression': 14, 'two_plte_chunk': 13, 'modified_phys': 13, 'unknown_critical_chunk': 10, 'idat_bad_zlib_method': 10, 'transparent_bkdred': 11, 'unknown_critical_chunk_bad_checksum': 10, 'chunk_with_number_in_name_before_idat': 10, 'ihdr_too_long': 10, 'indexed_no_plte': 10, 'control_rgba': 10, 'ihdr_invalid_filter_method': 10, 'truncated_chunk': 10, 'ihdr_height_0': 10, 'ihdr_widthheight0': 10, 'two_ihdr_chunk': 13, 'filters indexed': [1, 2, 4], 'gamma_four_and_srgb': 0, 'junk_after_iend': 10, 'truecolor_trns_chunk': 11, 'control_8bit_i': 10, 'png48': 10, 'invalid_length_iend': 10, 'Checksums': 11, 'first_idat_empty': 10, 'idat_junk_after_lz': 10, 'ihdr_too_short': 10, 'truecolor_alpha_trns_chunk': 11, 'idat_empty_zlib_object': 10, 'control_grayscale': 10, 'idat_bad_zlib_checkbits': 10, 'CVE-2014-0333': 10, 'ihdr_width_0': 10, 'invalid_iccp_2': 10, 'invalid_iccp_1': 10, 'mng_file': 10, 'jng_file': 10, 'no_iend': 10, 'nonconsecutive_idat': 10, 'transparent_truncated_palette': 10, 'invalid_name_ancillary_public_chunk_before_idat_bad_checksum': 10, 'invalid_name_reserved_bit_ancillary_public_chunk_before_idat': 10, 'gamma_four_nosrgb': 0, 'ihdr_invalid_compression_method': 10, 'invalid_name_ancillary_public_chunk_before_idat': 10, 'CESA-2004-001': 10, 'idat_bad_filter': 13, 'control_8bit': 10, 'iend_before_idat': 10, 'ihdr_not_first_chunk': 10, 'idat_bad_zlib_checksum': 10, 'grayscale_with_plte': 10, 'plte_after_idat': 10, 'filters RGB': [1, 2, 4], 'invalid_name_ancillary_private_chunk_before_idat': 10, 'idat_too_much_data': 10, 'black_white': 10, 'ios_cgbl_chunk': 10, 'png64': 10, 'idat_zlib_invalid_window': 10}),
 
         FingerpingFingerprint("No processing (server returns images unmodified)", "Servers that do not modify the image have this kind of behavior.",
-                              {'Compression': 12, 'two_plte_chunk': 11, 'modified_phys': 13, 'unknown_critical_chunk': 10, 'idat_bad_zlib_method': 4, 'transparent_bkdred': 13, 'unknown_critical_chunk_bad_checksum': 10, 'chunk_with_number_in_name_before_idat': 10, 'ihdr_too_long': 3, 'indexed_no_plte': 10, 'control_rgba': 10, 'ihdr_invalid_filter_method': 10, 'truncated_chunk': 2, 'ihdr_height_0': 10, 'ihdr_widthheight0': 10, 'two_ihdr_chunk': 11, 'filters indexed': [0], 'gamma_four_and_srgb': 13, 'junk_after_iend': 10, 'truecolor_trns_chunk': 13, 'control_8bit_i': 4, 'png48': 10, 'invalid_length_iend': 10, 'Checksums': 11, 'first_idat_empty': 10, 'idat_junk_after_lz': 10, 'ihdr_too_short': 3, 'truecolor_alpha_trns_chunk': 11, 'idat_empty_zlib_object': 4, 'control_grayscale': 10, 'idat_bad_zlib_checkbits': 4, 'CVE-2014-0333': 4, 'ihdr_width_0': 4, 'invalid_iccp_2': 10, 'invalid_iccp_1': 10, 'mng_file': 0, 'jng_file': 0, 'no_iend': 2, 'nonconsecutive_idat': 10, 'transparent_truncated_palette': 10, 'invalid_name_ancillary_public_chunk_before_idat_bad_checksum': 10, 'invalid_name_reserved_bit_ancillary_public_chunk_before_idat': 10, 'gamma_four_nosrgb': 0, 'ihdr_invalid_compression_method': 10, 'invalid_name_ancillary_public_chunk_before_idat': 10, 'CESA-2004-001': 10, 'idat_bad_filter': 13, 'control_8bit': 10, 'iend_before_idat': 4, 'ihdr_not_first_chunk': 10, 'idat_bad_zlib_checksum': 4, 'grayscale_with_plte': 10, 'plte_after_idat': 10, 'filters RGB': [0], 'invalid_name_ancillary_private_chunk_before_idat': 10, 'idat_too_much_data': 10, 'black_white': 4, 'ios_cgbl_chunk': 4, 'png64': 10, 'idat_zlib_invalid_window': 4}),
+                              {'Compression': 12, 'two_plte_chunk': 11, 'modified_phys': 13, 'unknown_critical_chunk': 10, 'idat_bad_zlib_method': 4, 'transparent_bkdred': 13, 'unknown_critical_chunk_bad_checksum': 10, 'chunk_with_number_in_name_before_idat': 10, 'ihdr_too_long': 3, 'indexed_no_plte': 10, 'control_rgba': 10, 'ihdr_invalid_filter_method': 10, 'truncated_chunk': 2, 'ihdr_height_0': 10, 'ihdr_widthheight0': 10, 'two_ihdr_chunk': 11, 'filters indexed': [0], 'gamma_four_and_srgb': 13, 'junk_after_iend': 10, 'truecolor_trns_chunk': 13, 'control_8bit_i': 4, 'png48': 10, 'invalid_length_iend': 10, 'Checksums': 11, 'first_idat_empty': 10, 'idat_junk_after_lz': 10, 'ihdr_too_short': 3, 'truecolor_alpha_trns_chunk': 11, 'idat_empty_zlib_object': 4, 'control_grayscale': 10, 'idat_bad_zlib_checkbits': 4, 'CVE-2014-0333': 4, 'ihdr_width_0': 4, 'invalid_iccp_2': 10, 'invalid_iccp_1': 10, 'mng_file': 0, 'jng_file': 0, 'no_iend': 2, 'nonconsecutive_idat': 10, 'transparent_truncated_palette': 10, 'invalid_name_ancillary_public_chunk_before_idat_bad_checksum': 10, 'invalid_name_reserved_bit_ancillary_public_chunk_before_idat': 10, 'gamma_four_nosrgb': 13, 'ihdr_invalid_compression_method': 10, 'invalid_name_ancillary_public_chunk_before_idat': 10, 'CESA-2004-001': 10, 'idat_bad_filter': 13, 'control_8bit': 10, 'iend_before_idat': 4, 'ihdr_not_first_chunk': 10, 'idat_bad_zlib_checksum': 4, 'grayscale_with_plte': 10, 'plte_after_idat': 10, 'filters RGB': [0], 'invalid_name_ancillary_private_chunk_before_idat': 10, 'idat_too_much_data': 10, 'black_white': 4, 'ios_cgbl_chunk': 4, 'png64': 10, 'idat_zlib_invalid_window': 4}),
 
         FingerpingFingerprint("Dart", "Dart Image 1.1.21 https://pub.dartlang.org/packages/image",
                               {'black_white': 10, 'control_8bit_i': 10, 'Compression': 11, 'ihdr_too_long': 10, 'ihdr_height_0': 10, 'invalid_name_reserved_bit_ancillary_public_chunk_before_idat': 10, 'idat_bad_zlib_method': 0, 'truecolor_trns_chunk': 11, 'gamma_four_and_srgb': 11, 'truecolor_alpha_trns_chunk': 11, 'invalid_length_iend': 10, 'nonconsecutive_idat': 10, 'filters RGB': [4], 'ihdr_width_0': 0, 'unknown_critical_chunk_bad_checksum': 10, 'two_plte_chunk': 12, 'idat_bad_filter': 0, 'CESA-2004-001': 0, 'ihdr_widthheight0': 10, 'no_iend': 0, 'jng_file': 10, 'control_8bit': 10, 'transparent_truncated_palette': 10, 'filters indexed': [4], 'transparent_bkdred': 11, 'two_ihdr_chunk': 12, 'idat_too_much_data': 10, 'invalid_name_ancillary_public_chunk_before_idat': 10, 'idat_empty_zlib_object': 0, 'truncated_chunk': 0, 'png64': 10, 'idat_junk_after_lz': 10, 'invalid_iccp_2': 10, 'ihdr_not_first_chunk': 10, 'control_rgba': 10, 'chunk_with_number_in_name_before_idat': 10, 'first_idat_empty': 10, 'invalid_name_ancillary_public_chunk_before_idat_bad_checksum': 10, 'png48': 10, 'unknown_critical_chunk': 10, 'iend_before_idat': 0, 'invalid_iccp_1': 10, 'idat_bad_zlib_checksum': 0, 'modified_phys': 11, 'invalid_name_ancillary_private_chunk_before_idat': 10, 'mng_file': 0, 'grayscale_with_plte': 10, 'ihdr_too_short': 0, 'gamma_four_nosrgb': 11, 'junk_after_iend': 10, 'indexed_no_plte': 0, 'plte_after_idat': 10, 'ihdr_invalid_compression_method': 10, 'idat_bad_zlib_checkbits': 0, 'CVE-2014-0333': 10, 'ios_cgbl_chunk': 0, 'Checksums': 11, 'control_grayscale': 10, 'idat_zlib_invalid_window': 10, 'ihdr_invalid_filter_method': 0}),
