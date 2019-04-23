@@ -4449,7 +4449,7 @@ trailer <<
                 urr.download_rr = download_rr
 
                 # Calculating image entropy
-                if injector.opts.calculate_entropy:
+                if injector.opts.calculate_entropy and urr.download_rr is not None:
                     download_responseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
                     headers = [FloydsHelpers.u2s(x) for x in download_responseInfo.getHeaders()]
                     if any("image/" in h for h in headers):
@@ -8636,7 +8636,8 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         # This "if" is necessary to be backward compatible (the old serialized object does not have this attribute)
         if 'sleep_time' in serialized_object:
             self.tf_sleep_time.setText(str(serialized_object['sleep_time']))
-        self.cb_calculate_entropy.setSelected(serialized_object['calculate_entropy'])
+        if 'calculate_entropy' in serialized_object:
+            self.cb_calculate_entropy.setSelected(serialized_object['calculate_entropy'])
         self.cb_create_log.setSelected(serialized_object['create_log'])
         self.cb_replace_filename.setSelected(serialized_object['replace_filename'])
         self.cb_replace_ct.setSelected(serialized_object['replace_ct'])
