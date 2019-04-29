@@ -152,7 +152,6 @@ class BurpExtender(IBurpExtender, IScannerCheck,
     REDL_FILENAME_MARKER = "${FILENAME}"
     PYTHON_STR_MARKER_START = "${PYTHONSTR:"
     PYTHON_STR_MARKER_END = "}"
-    IMAGE_ENTROPY_CSI = []
 
     # Implement IBurpExtender
     def registerExtenderCallbacks(self, callbacks):
@@ -873,8 +872,19 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         url = self._helpers.analyzeRequest(urr.download_rr).getUrl()
 
         try:
+            picture_width, picture_height, fileformat = ImageHelpers.image_width_height(body)
+            if picture_width and picture_height and fileformat:
+                if picture_width >= 200 or picture_height >= 200:
+                    # We first resize the picture to a small one so we don't have to check
+                    # too many pixels (performance)...
+                    thumbnail = ImageHelpers.rescale_image(200, 200, body)
+                    if thumbnail:  # only if body was an image that ImageIO can parse
+                        # Now get the pixels of the picture
+                        body = thumbnail
+
             rgbs = ImageHelpers.get_image_rgb_list(body)
             conv = "".join([struct.pack("<I",i) for i in rgbs])
+
             compressed = zlib.compress(conv, 9)
             ratio = len(rgbs*4)/len(compressed)
 
@@ -1225,21 +1235,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 
         # Just to make sure (maybe we write a new module above and forget this call):
         self.collab_monitor_thread.add_or_update(burp_colab, colab_tests)
-
-        # Calculating image entropy is done after all the scans are compleated
-        if not scan_was_stopped and injector.opts.calculate_entropy:
-            ratios = []
-            # Calculates the median of the compression ratios
-            for csi, ratio in self.IMAGE_ENTROPY_CSI:
-                ratios.append(ratio)
-            median = self._median(ratios)
-
-            print "Reporting Image entropies"
-            for csi, ratio in self.IMAGE_ENTROPY_CSI:
-                if ratio < median:
-                    self._callbacks.addScanIssue(csi)
-            self.IMAGE_ENTROPY_CSI = []
-
+                
         # DoSing the server is best done at the end when we already know about everything else...
         # Timeout and DoS - generic
         if not scan_was_stopped:
@@ -3420,6 +3416,15 @@ trailer <<
                     resp = FloydsHelpers.jb2ps(urr.download_rr.getResponse())
                     body_offset = i_response_info.getBodyOffset()
                     body = resp[body_offset:]
+                    
+                    # Calculate image entropy
+                    if injector.opts.calculate_entropy and urr.download_rr:
+                        headers = [FloydsHelpers.u2s(x) for x in i_response_info.getHeaders()]
+                        if any("image/" in h for h in headers):
+                            csi, ratio = self._calculate_image_entropy(injector, urr)
+                            if csi is not None:
+                                self._callbacks.addScanIssue(csi)
+
                     if body.startswith('\x89PNG'):
                         # print "Downloaded", orig_filename, "is a PNG. Content:"
                         # print repr(body)
@@ -3731,7 +3736,16 @@ trailer <<
                 print "Recursive Uploader doing", new_filename, mime_type
                 req = injector.get_request(new_filename, content, mime_type)
                 if req:
-                    self._make_http_request(injector, req)
+                    urr = self._make_http_request(injector, req, redownload_filename=new_filename)
+
+                    # Image entropy calculation
+                    if injector.opts.calculate_entropy and urr.download_rr:
+                        download_responseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
+                        headers = [FloydsHelpers.u2s(x) for x in download_responseInfo.getHeaders()]
+                        if any("image/" in h for h in headers):
+                            csi, ratio = self._calculate_image_entropy(injector, urr)
+                            if csi is not None:
+                                self._callbacks.addScanIssue(csi)
 
                 # Combine with replacer
                 if injector.opts.ru_combine_with_replacer and burp_colab:
@@ -3765,7 +3779,16 @@ trailer <<
             name_increment += 1
             req = injector.get_request(new_filename, new_content)
             if req:
-                self._make_http_request(injector, req)
+                urr = self._make_http_request(injector, req, redownload_filename=new_filename)            
+                # Image entropy calculation
+                if injector.opts.calculate_entropy and urr.download_rr:
+                    download_responseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
+                    headers = [FloydsHelpers.u2s(x) for x in download_responseInfo.getHeaders()]
+                    if any("image/" in h for h in headers):
+                        csi, ratio = self._calculate_image_entropy(injector, urr)
+                        if csi is not None:
+                            self._callbacks.addScanIssue(csi)
+
         for _ in xrange(0, injector.opts.fuzzer_random_mutations):
             new_content = copy.copy(content)
             index = random.randint(0, len(new_content) - 1)
@@ -3784,7 +3807,15 @@ trailer <<
             name_increment += 1
             req = injector.get_request(new_filename, new_content)
             if req:
-                self._make_http_request(injector, req)
+                urr = self._make_http_request(injector, req, redownload_filename=new_filename)
+                # Image entropy calculation
+                if injector.opts.calculate_entropy and urr.download_rr:
+                    download_responseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
+                    headers = [FloydsHelpers.u2s(x) for x in download_responseInfo.getHeaders()]
+                    if any("image/" in h for h in headers):
+                        csi, ratio = self._calculate_image_entropy(injector, urr)
+                        if csi is not None:
+                            self._callbacks.addScanIssue(csi)
 
     def _timeout_and_dos(self, injector):
         orig_filename = injector.get_uploaded_filename()
@@ -4447,15 +4478,6 @@ trailer <<
                 preflight_rr, download_rr = injector.opts.redownloader_try_redownload(resp, redownload_filename)
                 urr.preflight_rr = preflight_rr
                 urr.download_rr = download_rr
-
-                # Calculating image entropy
-                if injector.opts.calculate_entropy and urr.download_rr is not None:
-                    download_responseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
-                    headers = [FloydsHelpers.u2s(x) for x in download_responseInfo.getHeaders()]
-                    if any("image/" in h for h in headers):
-                        csi, ratio = self._calculate_image_entropy(injector, urr)
-                        if csi is not None:
-                            self.IMAGE_ENTROPY_CSI.append([csi, ratio])
 
                 if injector.opts.create_log:
                     # create a new log entry with the message details
