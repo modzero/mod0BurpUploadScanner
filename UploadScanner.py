@@ -862,47 +862,64 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                                self._helpers.analyzeRequest(rr).getUrl()))
             self.fireTableRowsInserted(row, row)
 
+    # Helper functions for image entropy calculation
+    def _calculate_image_entropy_wrapper(self, injector, urr):
+        download_responseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
+        headers = [FloydsHelpers.u2s(x) for x in download_responseInfo.getHeaders()]
+        if any("image/" in h for h in headers):
+            ratio = self._calculate_image_entropy(injector, urr)
+            return ratio
+
+    def _report_image_entropy(self, Entropy_list):
+        # Calculate median of the ratios
+        ratios = [ratio[0] for ratio in Entropy_list]
+        median = self._median(ratios)
+        for item in Entropy_list:
+            if item[0] and item[0] < median:
+                injector = item[1]
+                urr = item[2]
+                ratio = item[0]
+                service = urr.download_rr.getHttpService()
+                url = self._helpers.analyzeRequest(urr.download_rr).getUrl()
+                name = "Downloaded image entropy info"
+                severity = "Information"
+                confidence = "Firm"
+                detail = "Information about the redownloaded image entropy where compression ratios were lower than the avarage. <br> " \
+                     "If the compression ratio is too low, that could mean that the image contains memory leak.<br><br> " \
+                     "The avarage compression ratio for the module was:<b> {} </b><br><br> " \
+                     "Compression ratio for this image:<b> {} </b><br>".format(median,ratio)
+
+                csi = CustomScanIssue([injector.get_brr()], name, detail, confidence, severity, service, url)
+                csi.httpMessagesPy = [urr.upload_rr, urr.download_rr]
+                if csi:
+                    self._callbacks.addScanIssue(csi)
+
+
+    
     # Function to calculate image entropy via compressing redownloaded images
     def _calculate_image_entropy(self, injector, urr):
-        
-        iResponseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
-        body = FloydsHelpers.jb2ps(urr.download_rr.getResponse())[iResponseInfo.getBodyOffset():]
-
-        service = urr.download_rr.getHttpService()
-        url = self._helpers.analyzeRequest(urr.download_rr).getUrl()
+        download_iResponseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
+        download_body = FloydsHelpers.jb2ps(urr.download_rr.getResponse())[download_iResponseInfo.getBodyOffset():]
 
         try:
-            picture_width, picture_height, fileformat = ImageHelpers.image_width_height(body)
+            # Rescaling the image for performance            
+            picture_width, picture_height, fileformat = ImageHelpers.image_width_height(download_body)
             if picture_width and picture_height and fileformat:
                 if picture_width >= 200 or picture_height >= 200:
-                    # We first resize the picture to a small one so we don't have to check
-                    # too many pixels (performance)...
-                    thumbnail = ImageHelpers.rescale_image(200, 200, body)
-                    if thumbnail:  # only if body was an image that ImageIO can parse
-                        # Now get the pixels of the picture
-                        body = thumbnail
+                    download_thumbnail = ImageHelpers.rescale_image(200, 200, download_body)
+                    if download_thumbnail:
+                        download_body = download_thumbnail
 
-            rgbs = ImageHelpers.get_image_rgb_list(body)
-            conv = "".join([struct.pack("<I",i) for i in rgbs])
+            download_rgbs = ImageHelpers.get_image_rgb_list(download_body)
+            download_conv = "".join([struct.pack("<I",i) for i in download_rgbs])
+            download_compressed = zlib.compress(download_conv, 9)
 
-            compressed = zlib.compress(conv, 9)
-            ratio = len(rgbs*4)/len(compressed)
+            ratio = len(download_rgbs)*4/(len(download_compressed)*1.0)
 
-            name = "Downloaded image entropy info"
-            severity = "Information"
-            confidence = "Firm"
-            detail = "Information about the every redownloaded image entropy. <br> " \
-                     "If the compression ratio is too low, that could mean that the image contains memory leak.<br><br> " \
-                     "RGB numbers before compression:<b> {} </b><br> " \
-                     "RGB numbers after compression:<b> {} </b><br> " \
-                     "Compression ratio:<b> {} </b><br>".format(len(rgbs)*4, len(compressed), ratio)
-
-            csi = CustomScanIssue([injector.get_brr()], name, detail, confidence, severity, service, url)
-            csi.httpMessagesPy = [urr.upload_rr, urr.download_rr]
-            return csi, ratio
-
+            return ratio
+            
         except:
-            return None, None
+            return None
     
 
     # Implement IHttpListener
@@ -3387,6 +3404,7 @@ trailer <<
         return colab_tests
 
     def _fingerping(self, injector):
+        Entropy_list = []
         if not injector.opts.file_formats['png'].isSelected():
             # we only upload PNG files in this module
             return
@@ -3418,12 +3436,10 @@ trailer <<
                     body = resp[body_offset:]
                     
                     # Calculate image entropy
-                    if injector.opts.calculate_entropy and urr.download_rr:
-                        headers = [FloydsHelpers.u2s(x) for x in i_response_info.getHeaders()]
-                        if any("image/" in h for h in headers):
-                            csi, ratio = self._calculate_image_entropy(injector, urr)
-                            if csi is not None:
-                                self._callbacks.addScanIssue(csi)
+                    if injector.opts.calculate_entropy and urr and urr.download_rr:
+                        ratio = self._calculate_image_entropy_wrapper(injector, urr)
+                        if ratio:
+                            Entropy_list.append([ratio, injector, urr])
 
                     if body.startswith('\x89PNG'):
                         # print "Downloaded", orig_filename, "is a PNG. Content:"
@@ -3484,6 +3500,12 @@ trailer <<
                                result_table, repr(results))
         issue = self._create_issue_template(injector.get_brr(), title, desc, confidence, "Information")
         self._add_scan_issue(issue)
+
+        # Reportin image entropy results
+        if injector.opts.calculate_entropy:
+            print "Reporting image entropies for fingerping..."
+            self._report_image_entropy(Entropy_list)
+        
 
 
     def _quirks_with_passive(self, injector):
@@ -3684,6 +3706,10 @@ trailer <<
         # file extension: from original request, from file, using the default, guessing by mime type
         # mime_type:      from original request, guessing by file, guessing by file extension
         # File content:   Always from file
+        
+        # List for entropy calc
+        Entropy_list = []
+
         if not injector.opts.ru_dirpath:
             return
 
@@ -3739,13 +3765,10 @@ trailer <<
                     urr = self._make_http_request(injector, req, redownload_filename=new_filename)
 
                     # Image entropy calculation
-                    if injector.opts.calculate_entropy and urr.download_rr:
-                        download_responseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
-                        headers = [FloydsHelpers.u2s(x) for x in download_responseInfo.getHeaders()]
-                        if any("image/" in h for h in headers):
-                            csi, ratio = self._calculate_image_entropy(injector, urr)
-                            if csi is not None:
-                                self._callbacks.addScanIssue(csi)
+                    if injector.opts.calculate_entropy and urr and urr.download_rr:
+                        ratio = self._calculate_image_entropy_wrapper(injector, urr)
+                        if ratio:
+                            Entropy_list.append([ratio, injector, urr])
 
                 # Combine with replacer
                 if injector.opts.ru_combine_with_replacer and burp_colab:
@@ -3761,9 +3784,17 @@ trailer <<
                                     urr = self._make_http_request(injector, req)
                                     if urr:
                                         colab_tests.append(ColabTest(colab_url, urr, issue))
+
+        if injector.opts.calculate_entropy:
+            print "Reporting image entropies for recursive uploader..."
+            self._report_image_entropy(Entropy_list)
+
         return colab_tests
 
     def _fuzz(self, injector):
+        # Variable for image entropy calc
+        Entropy_list = []
+
         content = injector.get_uploaded_content()
         if not content:
             return
@@ -3781,13 +3812,10 @@ trailer <<
             if req:
                 urr = self._make_http_request(injector, req, redownload_filename=new_filename)            
                 # Image entropy calculation
-                if injector.opts.calculate_entropy and urr.download_rr:
-                    download_responseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
-                    headers = [FloydsHelpers.u2s(x) for x in download_responseInfo.getHeaders()]
-                    if any("image/" in h for h in headers):
-                        csi, ratio = self._calculate_image_entropy(injector, urr)
-                        if csi is not None:
-                            self._callbacks.addScanIssue(csi)
+                if injector.opts.calculate_entropy and urr and urr.download_rr:
+                    ratio = self._calculate_image_entropy_wrapper(injector, urr)
+                    if ratio:
+                        Entropy_list.append([ratio, injector, urr])
 
         for _ in xrange(0, injector.opts.fuzzer_random_mutations):
             new_content = copy.copy(content)
@@ -3809,13 +3837,14 @@ trailer <<
             if req:
                 urr = self._make_http_request(injector, req, redownload_filename=new_filename)
                 # Image entropy calculation
-                if injector.opts.calculate_entropy and urr.download_rr:
-                    download_responseInfo = self._helpers.analyzeResponse(urr.download_rr.getResponse())
-                    headers = [FloydsHelpers.u2s(x) for x in download_responseInfo.getHeaders()]
-                    if any("image/" in h for h in headers):
-                        csi, ratio = self._calculate_image_entropy(injector, urr)
-                        if csi is not None:
-                            self._callbacks.addScanIssue(csi)
+                if injector.opts.calculate_entropy and urr and urr.download_rr:
+                    ratio = self._calculate_image_entropy_wrapper(injector, urr)
+                    if ratio:
+                        Entropy_list.append([ratio, injector, urr])
+        # Reporting image entropy
+        if injector.opts.calculate_entropy:
+            print "Reporting image entropies for fuzzer..."
+            self._report_image_entropy(Entropy_list)
 
     def _timeout_and_dos(self, injector):
         orig_filename = injector.get_uploaded_filename()
