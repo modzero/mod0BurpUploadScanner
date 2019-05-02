@@ -13,26 +13,19 @@ estimate the randomness of the pixels by dividing these two values with each oth
 
 This module will give an informational issue to all redownloaded pictures, where the compression ratio is beneath the
 median of all compression ratios, which can help us to see, if there is too much random noise in the picture,
-and from then, we can manually investigate the incident.
+and from there, we can manually investigate the incident.
 
+## When/How it is used
+
+Image entropy calculation is only done on the Fingerping, fuzzer, and recursive uploader module, if the "Calculate image entropy" checkbox is selected. 
+The module will create informational issues where the redownloaded picture compression ratio is lower than the avarage of it. It can be used to detect issues such as this: https://blog.silentsignal.eu/2019/04/18/drop-by-drop-bleeding-through-libvips/
 
 ## Changes in the code:
 
 Added a checkbox to the general options UI with label "Calculate image entropy". It's referenced in the code as calculate_entropy
 
-Added a global variable called IMAGE_ENTROPY_CSI (line 155) to store the issues and ratios of the redownloaded pictures.
+Added new functions for the  entropy calculation/reporting. These are defined from line 866 to 922.
 
-Added a new function called _calculate_image_entropy, which is defined at line 866.
-This function takes a redownloaded response, and tries to get RGB list out of its body.
-Then it compresses the RGB list and calculates a ratio based on the two results.
+The calculation is called in the affected modules(Fingerping/Fuzzer/Recursive uploader), where all the ratios and request/responses are stored in a local variable called Entropy_list, which is used at the end of each module for the reporting.
 
-This function is called from the _make_http_request function after a redownloaded response returns with an image content type
-and the calculate_entropy checkbox is checked. The call itself can be seen at line 4456.
-
-Added a new helper function which calculates the median of a given list. (line 4182)
-
-The reporting itself is done after all the other modules are finished their testing, but before the DoS module.
-It can be seen at line 1229, where the median of the ratios are calculated, and all the pictures, which are beneath
-the median are reported as an informal issue.
-
-Please note that this code is only a Proof of Concept, the methodology, or places of the functions/calls could be changed after reconsideration. 
+Added a new helper function which calculates the median of a given list. (line 4243)
