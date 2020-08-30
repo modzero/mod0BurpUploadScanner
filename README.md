@@ -206,7 +206,7 @@ File extensions are never varied in capitalization (eg. .ExE or such). I see lit
 
 Like with nearly every other active scan implemented in Burp (or any other scanner for that matter), the extension is not able to scan websites that require more than one upload request for the file to be stored on the server. However, you could use Burp Makros to achieve this. But in general file uploads that require multiple requests or complex calculations (e.g. checksums over file content in upload requests) are out of scope of this extension. Feel free to let us know if you modified the source code to achieve this goal anyway.
 
-Like with nearly every other active scan implemented in Burp (or any other scanner for that matter), the extension is also not able to scan upload requests which are not repeatable (eg. agressive CSRF protections).
+Like with nearly every other active scan implemented in Burp (or any other scanner for that matter), the extension is also not able to scan upload requests which are not repeatable (eg. aggressive CSRF protections).
 
 Although this extension also runs under Burp Suite Community Edition, it has to skip all tests which use the [Burp Collaborator feature](http://blog.portswigger.net/2015/04/introducing-burp-collaborator.html). Additionally, it can only print issue summaries to stdout as no issues can be added inside Burp Suite Community Edition. So all in all this extension is pretty much useless in Burp Suite Community Edition.
 
@@ -309,7 +309,7 @@ http://example.org/example.mp4
 ```
 
 #### PHP code module
-The PHP code module uploads images which include server side PHP code as a filename with single and double extension (eg. .php.png). It also uploads very simple files that only include PHP code. This could potentially trigger RCE as described on [hackerone](https://hackerone.com/reports/27704). It also tries phtml and php5 file extensions. It has one special case where it tries to inject code directly into the GIF image content (not metadata) as described on [secgeek](https://www.secgeek.net/bookfresh-vulnerability/#comment-331). Additionally, it has partialy implemented a trick using PNG idate chunks as explained on [idontplaydarts](https://www.idontplaydarts.com/2012/06/encoding-web-shells-in-png-idat-chunks/).
+The PHP code module uploads images which include server side PHP code as a filename with single and double extension (eg. .php.png). It also uploads very simple files that only include PHP code. This could potentially trigger RCE as described on [hackerone](https://hackerone.com/reports/27704). It also tries phtml and php5 file extensions. It has one special case where it tries to inject code directly into the GIF image content (not metadata) as described on [secgeek](https://www.secgeek.net/bookfresh-vulnerability/#comment-331). Additionally, it has partially implemented a trick using PNG idate chunks as explained on [idontplaydarts](https://www.idontplaydarts.com/2012/06/encoding-web-shells-in-png-idat-chunks/).
 
 #### JSP code module
 The JSP code module uploads images which include server side JSP code as a filename with single and double extension (eg. .jsp.png). It also uploads very simple files that only include JSP code. The attacks use the <% %> syntax and the ${} expression syntax as well as the JSPX xml syntax.
@@ -407,7 +407,7 @@ Disabled by default. This module features its own UI elements once it's enabled.
 Disabled by default. Attention, this module is dangerous. Samples can lead to memory exhaustion, high disc usage and/or segmentation faults and other crashes. This brought down big websites before. During tests the scanner thread in Burp was simply stuck for more than a minute. In other cases when scanning the same server with multiple threads, the entire scan check stays stuck forever. You have been warned. It mainly uploads files that are known to crash image parsers such as ImageMagick, GraphicksMagick or Python Image Library (PIL). These are partially "0days" aka "I just fuzzed them with AFL" crashes. It also uses silly things such as fork bombs as imagetragick payloads.
 
 ### File formats
-Modules are only sending file formats that are enabled in these UI settings. This is another possiblity to make the extension send less files to a server. Each of the file formats should be self-explanatory.
+Modules are only sending file formats that are enabled in these UI settings. This is another possibility to make the extension send less files to a server. Each of the file formats should be self-explanatory.
 
 ### General options
 
