@@ -560,6 +560,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 
         # README
         self._aboutJLabel = JLabel(Readme.get_readme(), SwingConstants.CENTER)
+        self._aboutJLabel.putClientProperty("html.disable", None)
 
         self._callbacks.customizeUiComponent(self._main_jtabedpane)
         self._callbacks.customizeUiComponent(self._splitpane)
