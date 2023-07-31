@@ -1,4 +1,5 @@
 from helpers.FloydsHelpers import FloydsHelpers
+from misc.Constants import Constants
 from misc.CustomHttpService import CustomHttpService
 from misc.CustomRequestResponse import CustomRequestResponse
 from misc.Misc import ScanMessageEditorController
@@ -204,7 +205,7 @@ class ScanController(JSplitPane, IMessageEditorController, DocumentListener):
         OptionsPanel.mark_configured(self.lbl_upload_req_service)
         self.button_panel.add(self.lbl_upload_req_service, self.gbc)
         self.gbc.gridx += 1
-        self.tf_upload_req_service = JTextField(CustomHttpService.to_url(self.upload_req_service), ScanController.TEXTFIELD_SIZE)
+        self.tf_upload_req_service = JTextField(CustomHttpService.to_url(self.upload_req_service), Constants.TEXTFIELD_SIZE)
         self.tf_upload_req_service.getDocument().addDocumentListener(self)
         self.button_panel.add(self.tf_upload_req_service, self.gbc)
 
@@ -215,7 +216,7 @@ class ScanController(JSplitPane, IMessageEditorController, DocumentListener):
         self.button_panel.add(self.lbl_preflight_req_service, self.gbc)
         self.lbl_preflight_req_service.setVisible(False)
         self.gbc.gridx += 1
-        self.tf_preflight_req_service = JTextField('', ScanController.TEXTFIELD_SIZE)
+        self.tf_preflight_req_service = JTextField('', Constants.TEXTFIELD_SIZE)
         self.tf_preflight_req_service.getDocument().addDocumentListener(self)
         self.tf_preflight_req_service.setVisible(False)
         self.button_panel.add(self.tf_preflight_req_service, self.gbc)
@@ -227,7 +228,7 @@ class ScanController(JSplitPane, IMessageEditorController, DocumentListener):
         self.button_panel.add(self.lbl_redownload_req_service, self.gbc)
         self.lbl_redownload_req_service.setVisible(False)
         self.gbc.gridx += 1
-        self.tf_redownload_req_service = JTextField('', ScanController.TEXTFIELD_SIZE)
+        self.tf_redownload_req_service = JTextField('', Constants.TEXTFIELD_SIZE)
         self.tf_redownload_req_service.getDocument().addDocumentListener(self)
         self.tf_redownload_req_service.setVisible(False)
         self.button_panel.add(self.tf_redownload_req_service, self.gbc)

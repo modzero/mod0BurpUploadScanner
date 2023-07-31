@@ -459,14 +459,14 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 text=self.redl_end_marker)
             _, self.cb_redl_repl_backslash = self.checkbox("Replace \\/ with / in parsed content:", True)
             self.lbl_redl_prefix, self.tf_redl_prefix = self.large_tf(
-                "Additional URL prefix for parsed part (you can use" + BurpExtender.REDL_FILENAME_MARKER + "):",
+                "Additional URL prefix for parsed part (you can use" + Constants.REDL_FILENAME_MARKER + "):",
                 text=self.redl_prefix)
             self.lbl_redl_suffix, self.tf_redl_suffix = self.large_tf(
-                "Additional URL suffix for parsed part (you can use " + BurpExtender.REDL_FILENAME_MARKER + "):",
+                "Additional URL suffix for parsed part (you can use " + Constants.REDL_FILENAME_MARKER + "):",
                 text=self.redl_suffix)
 
             self.lbl_redl_static_url, self.tf_redl_static_url = self.large_tf(
-                "2. Alternatively, a static URL, eg. http://example.org/upload/" + BurpExtender.REDL_FILENAME_MARKER + ": ",
+                "2. Alternatively, a static URL, eg. http://example.org/upload/" + Constants.REDL_FILENAME_MARKER + ": ",
                 text=self.redl_static_url)
 
             # At the start it's simply nicer if the headline is not greyed out...
@@ -516,8 +516,8 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
 
     def _process_python_str(self, input):
         output = input
-        if input.startswith(BurpExtender.PYTHON_STR_MARKER_START) and input.endswith(BurpExtender.PYTHON_STR_MARKER_END):
-            value = input[len(BurpExtender.PYTHON_STR_MARKER_START):-len(BurpExtender.PYTHON_STR_MARKER_END)]
+        if input.startswith(Constants.PYTHON_STR_MARKER_START) and input.endswith(Constants.PYTHON_STR_MARKER_END):
+            value = input[len(Constants.PYTHON_STR_MARKER_START):-len(Constants.PYTHON_STR_MARKER_END)]
             try:
                 parsed = ast.literal_eval(value)
             except (ValueError, SyntaxError) as e:
@@ -919,11 +919,11 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 else:
                     resp = FloydsHelpers.jb2ps(self.scan_controler.upload_resp_view.getMessage())
                 if resp:
-                    multipart_file_name = CustomMultipartInsertionPoint(self._helpers, BurpExtender.NEWLINE,
+                    multipart_file_name = CustomMultipartInsertionPoint(self._helpers, Constants.NEWLINE,
                                                                         FloydsHelpers.jb2ps(self.scan_controler.upload_req_view.getMessage())).getBaseValue()
                     redownload_file_name = self.fi_ofilename or multipart_file_name or "example.jpeg"
-                    redl_start_marker = self.redl_start_marker_transformed.replace(BurpExtender.REDL_FILENAME_MARKER, redownload_file_name)
-                    redl_end_marker = self.redl_end_marker_transformed.replace(BurpExtender.REDL_FILENAME_MARKER, redownload_file_name)
+                    redl_start_marker = self.redl_start_marker_transformed.replace(Constants.REDL_FILENAME_MARKER, redownload_file_name)
+                    redl_end_marker = self.redl_end_marker_transformed.replace(Constants.REDL_FILENAME_MARKER, redownload_file_name)
                     parsed_content = FloydsHelpers.between_markers(resp, redl_start_marker, redl_end_marker)
                     if parsed_content:
                         self.scan_controler.lbl_parser.setText("Configuration status: Simple parse ready for test, check requests manually first!")
@@ -953,7 +953,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 OptionsPanel.mark_configured(self.lbl_redl)
                 self.scan_controler.lbl_parser.setText("Configuration status:  Static URL ready for test, check requests manually first!")
                 OptionsPanel.mark_configured(self.scan_controler.lbl_parser)
-                multipart_file_name = CustomMultipartInsertionPoint(self._helpers, BurpExtender.NEWLINE,
+                multipart_file_name = CustomMultipartInsertionPoint(self._helpers, Constants.NEWLINE,
                                                                     FloydsHelpers.jb2ps(self.scan_controler.upload_req_view.getMessage())).getBaseValue()
                 redownload_file_name = self.fi_ofilename or multipart_file_name or "example.jpeg"
                 service, req = self._calculate_download_request(self.scan_controler.brr, None, redownload_file_name)
@@ -997,7 +997,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
             print("Does not seem to be a FlexiInjector request.")
             # Multipart:
             # A little trickier, as we need to mimic an injectionPoint provider...
-            insertionPoint = CustomMultipartInsertionPoint(self._helpers, BurpExtender.NEWLINE, FloydsHelpers.jb2ps(self.scan_controler.brr.getRequest()))
+            insertionPoint = CustomMultipartInsertionPoint(self._helpers, Constants.NEWLINE, FloydsHelpers.jb2ps(self.scan_controler.brr.getRequest()))
             if not insertionPoint.getInsertionPointType() == IScannerInsertionPoint.INS_PARAM_MULTIPART_ATTR:
                 if not self.fi_filepath:
                     self.scan_controler.lbl_parser.setText("Configuration status: You didn't configure FlexiInjector, but this request was also not detected as being multipart. Aborting!")
@@ -1021,14 +1021,14 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
 
     def _create_template_request(self, base_request_response, url_path, service):
         iRequestInfo = self._helpers.analyzeRequest(base_request_response)
-        new_req = "GET " + url_path + " HTTP/1.1" + BurpExtender.NEWLINE
+        new_req = "GET " + url_path + " HTTP/1.1" + Constants.NEWLINE
         headers = iRequestInfo.getHeaders()
         # very strange, Burp seems to include the status line in .getHeaders()...
         headers = headers[1:]
         new_headers = []
         for header in headers:
             is_bad_header = False
-            for bad_header in BurpExtender.REDL_URL_BAD_HEADERS:
+            for bad_header in Constants.REDL_URL_BAD_HEADERS:
                 if header.lower().startswith(bad_header):
                     is_bad_header = True
                     break
@@ -1049,16 +1049,16 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
             new_headers.append(header)
         new_headers.append("Accept: */*")
 
-        new_headers = BurpExtender.NEWLINE.join(new_headers)
+        new_headers = Constants.NEWLINE.join(new_headers)
         new_req += new_headers
-        new_req += BurpExtender.NEWLINE * 2
+        new_req += Constants.NEWLINE * 2
         return new_req
 
     def _use_template_request(self, base_request_response, url_path, service):
         iRequestInfo = self._helpers.analyzeRequest(base_request_response)
         req = FloydsHelpers.jb2ps(base_request_response.getRequest())
         method = req.split(" ", 1)[0]
-        new_req = method + " " + url_path + " HTTP/1.1" + BurpExtender.NEWLINE
+        new_req = method + " " + url_path + " HTTP/1.1" + Constants.NEWLINE
         headers = iRequestInfo.getHeaders()
         # very strange, Burp seems to include the status line in .getHeaders()...
         headers = headers[1:]
@@ -1073,12 +1073,12 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                 continue
             new_headers.append(header)
 
-        new_headers = BurpExtender.NEWLINE.join(new_headers)
+        new_headers = Constants.NEWLINE.join(new_headers)
         body = req[iRequestInfo.getBodyOffset():]
         if len(body) > 0:
-            new_headers = FloydsHelpers.fix_content_length(new_headers, len(body), BurpExtender.NEWLINE)
+            new_headers = FloydsHelpers.fix_content_length(new_headers, len(body), Constants.NEWLINE)
         new_req += new_headers
-        new_req += BurpExtender.NEWLINE * 2
+        new_req += Constants.NEWLINE * 2
         new_req += body
         return new_req
 
@@ -1108,10 +1108,10 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         return None, None
 
     def _calculate_download_request(self, brr, resp, sent_filename, use_from_ui=False):
-        prefix = self.redl_prefix.replace(BurpExtender.REDL_FILENAME_MARKER, urllib.quote(sent_filename))
-        suffix = self.redl_suffix.replace(BurpExtender.REDL_FILENAME_MARKER, urllib.quote(sent_filename))
-        redl_start_marker = self.redl_start_marker_transformed.replace(BurpExtender.REDL_FILENAME_MARKER, sent_filename)
-        redl_end_marker = self.redl_end_marker_transformed.replace(BurpExtender.REDL_FILENAME_MARKER, sent_filename)
+        prefix = self.redl_prefix.replace(Constants.REDL_FILENAME_MARKER, urllib.quote(sent_filename))
+        suffix = self.redl_suffix.replace(Constants.REDL_FILENAME_MARKER, urllib.quote(sent_filename))
+        redl_start_marker = self.redl_start_marker_transformed.replace(Constants.REDL_FILENAME_MARKER, sent_filename)
+        redl_end_marker = self.redl_end_marker_transformed.replace(Constants.REDL_FILENAME_MARKER, sent_filename)
         service = brr.getHttpService()
         if resp and redl_start_marker and redl_end_marker:
             url_path = FloydsHelpers.between_markers(resp, redl_start_marker, redl_end_marker)
@@ -1131,7 +1131,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
                     new_req = self._create_template_request(brr, url_path, service)
                 return service, new_req
         elif self.redl_static_url:
-            url_path = self.redl_static_url.replace(BurpExtender.REDL_FILENAME_MARKER, urllib.quote(sent_filename))
+            url_path = self.redl_static_url.replace(Constants.REDL_FILENAME_MARKER, urllib.quote(sent_filename))
             url_path, service = self._redownloader_calculate_service(url_path, service)
             if use_from_ui:
                 new_req = self._use_template_request(brr, url_path, service)
