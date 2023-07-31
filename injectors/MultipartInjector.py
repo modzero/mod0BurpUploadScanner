@@ -1,4 +1,9 @@
     
+import urllib
+from helpers.FloydsHelpers import FloydsHelpers
+from injectors.Injector import Injector
+
+
 class MultipartInjector(Injector):
     # Can *ONLY* be used for IScannerInsertionPoint.INS_PARAM_MULTIPART_ATTR checks
     # where insertionPoint.getInsertionPointName() == "filename"

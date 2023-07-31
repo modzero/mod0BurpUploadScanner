@@ -1,13 +1,13 @@
 
 import sys
 import traceback
-from FlexiInjector import FlexiInjector
-from misc.Misc import BackdooredFile
-from UploadScanner import BurpExtender
+from injectors.FlexiInjector import FlexiInjector
+from injectors.MultipartInjector import MultipartInjector
+from misc.Constants import Constants
+from misc.BackdooredFile import BackdooredFile
 from helpers.FloydsHelpers import FloydsHelpers
 from insertionPoints.CsvInsertionPoint import CsvInsertionPoint
 from insertionPoints.CustomMultipartInsertionPoint import CustomMultipartInsertionPoint
-import MultipartInjector
 from burp import IScannerInsertionPointProvider
 
 from insertionPoints.InsertionPointForActiveScan import InsertionPointForActiveScan
@@ -47,10 +47,10 @@ class InsertionPointProviderForActiveScan(IScannerInsertionPointProvider):
             if "content-type: multipart/form-data" in request_lower and \
                     CustomMultipartInsertionPoint.FILENAME_MARKER in req:
                 print("MultipartInjector insertion point found for getInsertionPoint ActiveScan!")
-                insertionPoint = CustomMultipartInsertionPoint(self._helpers, BurpExtender.NEWLINE, req)
-                injector = MultipartInjector(base_request_response, self._opts, insertionPoint, self._helpers, BurpExtender.NEWLINE)
+                insertionPoint = CustomMultipartInsertionPoint(self._helpers, Constants.NEWLINE, req)
+                injector = MultipartInjector(base_request_response, self._opts, insertionPoint, self._helpers, Constants.NEWLINE)
             elif self._opts.fi_ofilename:
-                fi = FlexiInjector(base_request_response, self._opts, self._helpers, BurpExtender.NEWLINE)
+                fi = FlexiInjector(base_request_response, self._opts, self._helpers, Constants.NEWLINE)
                 # We test only those requests where we find at least the content in the request as some implementations
                 # might not send the filename to the server
                 if fi.get_uploaded_content():

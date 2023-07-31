@@ -1,3 +1,7 @@
+import copy
+from burp import IScannerInsertionPoint
+
+from helpers.FloydsHelpers import FloydsHelpers
 
 class CsvInsertionPoint(IScannerInsertionPoint):
     def __init__(self, injector, new_line, delim, line_index, field_index):

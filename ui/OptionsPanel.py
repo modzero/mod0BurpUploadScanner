@@ -1,11 +1,11 @@
 # Burp imports
 import profile
 from burp import IScannerInsertionPoint
-from misc.Misc import BackdooredFile
-from misc.Misc import CustomHttpService
-from misc.Misc import CustomRequestResponse
+from misc.BackdooredFile import BackdooredFile
+from misc.Constants import Constants
+from misc.CustomHttpService import CustomHttpService
+from misc.CustomRequestResponse import CustomRequestResponse
 from misc.Misc import RunnableFunction
-from misc.Misc import ScanController
 from debuging.debug import DEBUG_MODE
 from helpers.FloydsHelpers import FloydsHelpers
 from insertionPoints.CustomMultipartInsertionPoint import CustomMultipartInsertionPoint
@@ -29,7 +29,6 @@ import urlparse  # urlparser for custom HTTP services
 import ast  # to parse ${PYTHONSTR:'abc\ndef'} into a python str
 import ast
 import os
-from urlparse import urlparse
 from java.awt import Font
 from javax.swing import JLabel
 from javax.swing import JPanel
@@ -323,13 +322,13 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
 
     def large_tf(self, desc, text):
         l = JLabel(desc)
-        t = JTextField(FloydsHelpers.u2s(text), ScanController.TEXTFIELD_SIZE)
+        t = JTextField(FloydsHelpers.u2s(text), Constants.TEXTFIELD_SIZE)
         t.getDocument().addDocumentListener(self)
         self._add_two(l, t)
         return l, t
 
     def file_chooser(self, desc, value=""):
-        t = JTextField(value, ScanController.TEXTFIELD_SIZE)
+        t = JTextField(value, Constants.TEXTFIELD_SIZE)
         t.getDocument().addDocumentListener(self)
         b = FileChooserButton()
         b.setup(t, desc)
@@ -337,7 +336,7 @@ class OptionsPanel(JPanel, DocumentListener, ActionListener):
         return b, t
 
     def dir_chooser(self, desc, value=""):
-        t = JTextField(value, ScanController.TEXTFIELD_SIZE)
+        t = JTextField(value, Constants.TEXTFIELD_SIZE)
         t.getDocument().addDocumentListener(self)
         b = DirectoryChooserButton()
         b.setup(t, desc)

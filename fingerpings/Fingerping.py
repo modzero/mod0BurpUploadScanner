@@ -1,7 +1,7 @@
 
-from fingerping.FingerpingFingerprints import FingerpingFingerprints
-from fingerping.FingerpingTests import FingerpingTests
-from fingerping.FingerpingXpng import FingerpingXpng
+from fingerpings.FingerpingFingerprints import FingerpingFingerprints
+from fingerpings.FingerpingTests import FingerpingTests
+from fingerpings.FingerpingXpng import FingerpingXpng
 
 
 class Fingerping:

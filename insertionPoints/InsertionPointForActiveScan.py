@@ -1,3 +1,7 @@
+from burp import IScannerInsertionPoint
+from helpers.FloydsHelpers import FloydsHelpers
+
+from misc.BackdooredFile import BackdooredFile
 
 class InsertionPointForActiveScan(IScannerInsertionPoint):
     # Where can we inject?

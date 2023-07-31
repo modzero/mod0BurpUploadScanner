@@ -1,6 +1,7 @@
 from helpers.FloydsHelpers import FloydsHelpers
 from java.net import URL
-from .Misc import CustomRequestResponse
+from .CustomRequestResponse import CustomRequestResponse
+from .CustomHttpService import CustomHttpService
 from burp import IScanIssue
 
 class CustomScanIssue(IScanIssue):

@@ -1,5 +1,5 @@
 
-from fingerping.FingerpingFingerprint import FingerpingFingerprint
+from fingerpings.FingerpingFingerprint import FingerpingFingerprint
 
 
 class FingerpingFingerprints:

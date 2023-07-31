@@ -1,5 +1,6 @@
 
-from fingerping.FingerpingTest import FingerpingTest
+from fingerpings.FingerpingTest import FingerpingTest
+from fingerpings.FingerpingXpng import FingerpingXpng
 
 
 class FingerpingTests:

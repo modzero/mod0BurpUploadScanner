@@ -1,3 +1,6 @@
+from helpers.FloydsHelpers import FloydsHelpers
+from misc.Constants import Constants
+
 class Injector(object):
     def get_url(self):
         return FloydsHelpers.u2s(self._helpers.analyzeRequest(self._brr).getUrl().toString())
@@ -11,8 +14,8 @@ class Injector(object):
     def get_types(self, all_types):
         new_types = set()
         for prefix, ext, mime_type in all_types:
-            if BurpExtender.MARKER_ORIG_EXT in ext:
-                ext = ext.replace(BurpExtender.MARKER_ORIG_EXT, self.get_default_file_ext())
+            if Constants.MARKER_ORIG_EXT in ext:
+                ext = ext.replace(Constants.MARKER_ORIG_EXT, self.get_default_file_ext())
             if not mime_type:
                 # The "use original mime type" marker is an empty string
                 mime_type = self.get_uploaded_content_type()

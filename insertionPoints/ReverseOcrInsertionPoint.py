@@ -1,4 +1,6 @@
-    
+from burp import IScannerInsertionPoint
+from helpers.FloydsHelpers import FloydsHelpers
+ 
 class ReverseOcrInsertionPoint(IScannerInsertionPoint):
     def __init__(self, injector, file_type):
         self.injector = injector
