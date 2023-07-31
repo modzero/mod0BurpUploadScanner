@@ -6,13 +6,14 @@ from burp import IHttpListener
 from burp import ITab
 from burp import IContextMenuFactory
 from burp import IExtensionStateListener
+from burp import IScannerInsertionPointProvider
 
 # Relative imports (avoid circular import)
 from debuging.debug import DEBUG_MODE
 from fingerpings.AviM3uXbin import AviM3uXbin
 from fingerpings.Fingerping import Fingerping
 from fingerpings.FingerpingImages import FingerpingImages
-from helpers import ImageHelpers
+from helpers.ImageHelpers import ImageHelpers
 from helpers.FloydsHelpers import FloydsHelpers
 from injectors.FlexiInjector import FlexiInjector
 from injectors.MultipartInjector import MultipartInjector
@@ -25,6 +26,7 @@ from misc.CustomRequestResponse import CustomRequestResponse
 from misc.ScanController import ScanController
 from ui.OptionsPanel import OptionsPanel
 from ui.LogEntry import LogEntry
+from ui.Table import Table
 from misc.Misc import CloseableTab
 from misc.Misc import ColabTest
 from misc.Misc import CollaboratorMonitorThread
@@ -40,6 +42,7 @@ from misc.Misc import Xxe
 from misc.Misc import XxeOfficeDoc
 from misc.Misc import XxeXmp
 from misc.Misc import BurpCollaborator
+
 # Java stdlib imports
 from java.util import ArrayList
 from javax.swing import JLabel
@@ -49,9 +52,13 @@ from javax.swing import JTabbedPane
 from javax.swing import JOptionPane
 from javax.swing import JMenuItem
 from javax.swing import SwingConstants
+from javax.swing import JTabbedPane, JScrollPane, JLabel, JSplitPane, JMenuItem, JOptionPane
+from javax.swing.table import AbstractTableModel
 from javax.swing.table import AbstractTableModel
 from java.awt import Desktop
 from java.net import URI
+from java.awt import Desktop
+
 # python stdlib imports
 import random  # to chose randomly
 import string  # ascii letters to chose random file name from
@@ -73,7 +80,6 @@ from errno import ERANGE
 import os
 import pickle
 import random
-import re
 import string
 import struct
 import sys
@@ -81,18 +87,7 @@ import textwrap
 import threading
 import time
 import traceback
-from javax.swing import JTabbedPane, JScrollPane, JLabel, JSplitPane, JMenuItem, JOptionPane
-from java.awt import Desktop
-from burp import IBurpExtender
-from burp import IScannerInsertionPoint
-from burp import IScannerCheck
-from burp import IHttpListener
-from burp import ITab
-from burp import IScannerInsertionPointProvider
-from burp import IContextMenuFactory
-from burp import IExtensionStateListener
-from javax.swing.table import AbstractTableModel
-from ui.Table import Table
+
 
 if DEBUG_MODE:
     # Hint: Module "gc" garbage collector is not fully implemented in Jython as it uses the Java garbage collector
