@@ -1,3 +1,12 @@
+import random
+
+from helpers.FloydsHelpers import FloydsHelpers
+
+from java.awt.image import BufferedImage
+from java.io import ByteArrayOutputStream
+from java.io import ByteArrayInputStream
+from javax.imageio import ImageIO
+from java.awt import Color
 
 class ImageHelpers(object):
     # As Python Pillow uses Python native C extensions and as Jython doesn't support that (yet)
