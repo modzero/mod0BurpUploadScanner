@@ -52,10 +52,6 @@ import cgi  # for HTML escaping
 import urlparse  # urlparser for custom HTTP services
 import zipfile  # to create evil zip files in memory
 import threading  # to make stuff thread safe
-from misc.CustomScanIssue import CustomScanIssue
-from ui.OptionsPanel import OptionsPanel  # to go from python list to Java array
-
-
 
 class StopScanException(Exception):
     pass

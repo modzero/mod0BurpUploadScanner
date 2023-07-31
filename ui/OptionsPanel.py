@@ -1,7 +1,6 @@
 # Burp imports
 import profile
 from burp import IScannerInsertionPoint
-from misc.Misc import ActionFunction
 from misc.Misc import BackdooredFile
 from misc.Misc import CustomHttpService
 from misc.Misc import CustomRequestResponse

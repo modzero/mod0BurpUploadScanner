@@ -10,11 +10,11 @@ from burp import IExtensionStateListener
 # Relative imports (avoid circular import)
 from debuging.debug import DEBUG_MODE
 import fingerpings
+from helpers.FloydsHelpers import FloydsHelpers
 from ui.LogEntry import LogEntry
 import ui.OptionsPanel
 from misc.Misc import CloseableTab
 from misc.Misc import BurpCollaborator
-from misc.Misc import ColabTest, CollaboratorMonitorThread, CustomHttpService, CustomRequestResponse, CustomScanIssue, DownloadMatcher, DownloadMatcherCollection, Fingerping, FingerpingImages, FlexiInjector, FloydsHelpers, ImageHelpers, InsertionPointProviderForActiveScan, MenuItemAction, MultipartInjector, Readme, ScanController, SsiPayloadGenerator, StopScanException, UploadRequestsResponses, Xbm, Xxe, XxeOfficeDoc, XxeXmp
 # Java stdlib imports
 from java.util import ArrayList
 from javax.swing import JLabel

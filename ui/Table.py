@@ -1,4 +1,5 @@
-from burp import JTable, IMessageEditorController
+from burp import IMessageEditorController
+from javax.swing import JTable
 
 class Table(JTable, IMessageEditorController):
     def __init__(self, extender):
