@@ -17,7 +17,7 @@ from helpers.FloydsHelpers import FloydsHelpers
 from injectors.FlexiInjector import FlexiInjector
 from injectors.MultipartInjector import MultipartInjector
 from insertionPoints.InsertionPointProviderForActiveScan import InsertionPointProviderForActiveScan
-from misc import CustomScanIssue
+from misc.CustomScanIssue import CustomScanIssue
 from misc.BackdooredFile import BackdooredFile
 from misc.Constants import Constants
 from misc.CustomHttpService import CustomHttpService
