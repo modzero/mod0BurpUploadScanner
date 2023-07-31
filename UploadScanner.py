@@ -76,17 +76,6 @@ import threading  # to make stuff thread safe
 import pickle  # persisting object serialization between extension reloads
 import cgi
 from copy import copy
-from errno import ERANGE
-import os
-import pickle
-import random
-import string
-import struct
-import sys
-import textwrap
-import threading
-import time
-import traceback
 
 
 if DEBUG_MODE:
