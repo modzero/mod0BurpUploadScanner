@@ -5,7 +5,26 @@ from .CustomHttpService import CustomHttpService
 from burp import IScanIssue
 
 class CustomScanIssue(IScanIssue):
-    def __init__(self, _httpMessages, _name, _detail, _confidence, _severity, _httpService=None, _url=None,
+    def __init__(self, base_request_response, callback_helper, name, detail, confidence, severity):
+        self.callback_helper = callback_helper
+        service = None
+        url = None
+        httpMessages = None
+
+        if(base_request_response):
+            httpMessages = [base_request_response]
+            service = base_request_response.getHttpService()
+        else:
+            httpMessages = []
+
+        try:
+            url = callback_helper.analyzeRequest(base_request_response).getUrl()          
+        except:
+            pass
+
+        self.create(httpMessages, name, detail, confidence, severity, service, url)
+
+    def create(self, _httpMessages, _name, _detail, _confidence, _severity, _httpService=None, _url=None,
                  _issue_type=0x08000000):
         # Some attributes had to be renamed to end in Py as Jython complains about read-only attributes otherwise...
         self.httpMessagesPy = _httpMessages
@@ -20,9 +39,26 @@ class CustomScanIssue(IScanIssue):
         self.urlPy = _url
 
     def create_copy(self):
-        # list() makes sure we copy
-        return CustomScanIssue(list(self.httpMessagesPy), self.name, self.detail, self.confidencePy,
-                               self.severityPy, self.httpServicePy, self.urlPy, self.type)
+        # Make a copy of the httpMessagesPy list
+        brr_copy = self.httpMessagesPy[0]
+
+        # Create a new CustomScanIssue instance with copied attributes
+        copy_issue = CustomScanIssue(
+            brr_copy,  # Copied httpMessagesPy list
+            self.callback_helper,
+            self.name,
+            self.detail,
+            self.confidencePy,
+            self.severityPy
+        )
+
+        # Copy optional attributes if they exist
+        if self.httpServicePy:
+            copy_issue.httpServicePy = self.httpServicePy
+        if self.urlPy:
+            copy_issue.urlPy = self.urlPy
+
+        return copy_issue
 
     def get_base_request_response(self):
         return self.httpMessagesPy[0]
