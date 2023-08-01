@@ -38,7 +38,7 @@ from io import BytesIO  # to mimic file IO but do it in-memory
 import urllib  # URL encode etc.
 import time  # detect timeouts and sleep for Threads
 import cgi
-from misc import CustomScanIssue
+from misc.CustomScanIssue import CustomScanIssue
 from misc.BackdooredFile import BackdooredFile
 from misc.Constants import Constants
 import urlparse  # urlparser for custom HTTP services
@@ -248,7 +248,7 @@ class XxeXmp(Xxe):
                     title = "XML external entity injection" # via " + ext[1:].upper() + " XMP"
                     desc = 'XXE through injection of a {} payload in the XMP metadata of a {} file. The server parsed ' \
                            'the code {} which resulted in a SSRF. <br>'.format(name, ext[1:].upper(), cgi.escape(payload))
-                    issue = CustomScanIssue.CustomScanIssue([injector.get_brr()], title, desc, "Firm", "High")
+                    issue = CustomScanIssue([injector.get_brr()], None, title, desc, "Firm", "High")
                     c = self._send_collab(injector, burp_colab, types, basename, content, old_xmp, new_xmp, issue)
                     colab_tests.extend(c)
             else:
@@ -713,7 +713,7 @@ class DownloadMatcherCollection(object):
                'leak the temporary path where the file was converted (usually /tmp/gmRANDOM).<br><br>This often ' \
                'happens with tiff files.<br><br>If you uploaded pictures that you processed with GraphicsMagick, ' \
                'make sure this is not a false positive of you uploading such pictures. <br><br>'
-        issue = CustomScanIssue.CustomScanIssue([], title, desc, "Tentative", "Low")
+        issue = CustomScanIssue([], self._helpers, title, desc, "Tentative", "Low")
         # eg. /tmp/gmi7JIsA GraphicsMagick 1.4 snapshot-20160531 Q8 http://www.GraphicsMagick.org/ with null bytes in it
         dl_matcher = DownloadMatcher(issue, filecontent="\x20http://www.GraphicsMagick.org/\x00")
         self._global_matchers.add(dl_matcher)
@@ -723,7 +723,7 @@ class DownloadMatcherCollection(object):
                'creation date, modification date and title (usually including path on server).<br><br>This often ' \
                'happens with pdf files.<br><br>If you uploaded pictures that you processed with ImageMagick yourself, ' \
                'make sure this is not a false positive of you uploading such pictures. <br><br>'
-        issue = CustomScanIssue.CustomScanIssue([], title, desc, "Tentative", "Low")
+        issue = CustomScanIssue([], self._helpers, title, desc, "Tentative", "Low")
         # eg.:
         # <<
         # /Title (/var/www/uploads/1DwldMeBFRcexmpkeywordsPHP1IiN.phtml)
@@ -741,7 +741,7 @@ class DownloadMatcherCollection(object):
                'Usually also tEXtdate:modify and timestamps are included. This often happens with png files.<br><br>' \
                'If you uploaded pictures that you processed with ImageMagick/GraphicksMagick yourself, make sure this ' \
                'is not a false positive of you uploading such pictures. <br><br>'
-        issue = CustomScanIssue.CustomScanIssue([], title, desc, "Tentative", "Low")
+        issue = CustomScanIssue([], self._helpers, title, desc, "Tentative", "Low")
         # eg. the following with null bytes in between:
         # #tEXtdate:create2018-02-28T16:17:47+00:00O%tEXtdate:modify2018-02-28T16:17:47+00:00>
         dl_matcher = DownloadMatcher(issue, filecontent="tEXtdate:create")
@@ -981,7 +981,7 @@ class DownloadMatcher(object):
         self.content_type_header_marker, self.content_disposition_header_marker
 
     def deserialize(self, serialized_object):
-        temp_issue = CustomScanIssue.CustomScanIssue(None, None, None, None, None)
+        temp_issue = CustomScanIssue(None, None, None, None, None, None)
         issue, self.url_content, self.not_in_url_content, self.filename_content_disposition, \
         self.not_in_filename_content_dispositon, self.filecontent, self.not_in_filecontent, self.content_type, \
         self.check_not_content_disposition, self.check_xss, self.xss_content_types, \
