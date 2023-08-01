@@ -1,4 +1,6 @@
+import random
 import re
+import string
 
 
 class Constants ():
@@ -29,3 +31,4 @@ class Constants ():
     PYTHON_STR_MARKER_START = "${PYTHONSTR:"
     PYTHON_STR_MARKER_END = "}"
     TEXTFIELD_SIZE = 20
+    FILE_START = None
