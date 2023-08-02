@@ -30,8 +30,8 @@ from ui.Table import Table
 from misc.Misc import CloseableTab
 from misc.Misc import ColabTest
 from misc.Misc import CollaboratorMonitorThread
-from misc.Misc import DownloadMatcher
-from misc.Misc import DownloadMatcherCollection
+from misc.Downloader import DownloadMatcher
+from misc.Downloader import DownloadMatcherCollection
 from misc.Misc import MenuItemAction
 from misc.Misc import Readme
 from misc.Misc import SsiPayloadGenerator

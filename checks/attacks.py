@@ -2,7 +2,7 @@ import cgi
 from misc.BackdooredFile import BackdooredFile
 from misc.Constants import Constants
 from misc.CustomScanIssue import CustomScanIssue
-from misc.Misc import DownloadMatcher
+from misc.Downloader import DownloadMatcher
 from misc.Send import Send
 
 
