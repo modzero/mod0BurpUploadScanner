@@ -159,7 +159,7 @@ class XxeXmp(Xxe):
                     title = "XML external entity injection" # via " + ext[1:].upper() + " XMP"
                     desc = 'XXE through injection of a {} payload in the XMP metadata of a {} file. The server parsed ' \
                            'the code {} which resulted in a SSRF. <br>'.format(name, ext[1:].upper(), cgi.escape(payload))
-                    issue = CustomScanIssue([injector.get_brr()], None, title, desc, "Firm", "High")
+                    issue = CustomScanIssue(injector.get_brr(), None, title, desc, "Firm", "High")
                     c = self._send_collab(injector, burp_colab, types, basename, content, old_xmp, new_xmp, issue)
                     colab_tests.extend(c)
             else:

@@ -155,309 +155,6 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         self._ui_tab_index = 1
         self._option_panels = {}
 
-        # Internal vars fuzzer (read only)
-        self.KNOWN_FUZZ_STRINGS = [
-            "A" * 256,
-            "A" * 1024,
-            "A" * 4096,
-            "A" * 20000,
-            "A" * 65535,
-            "%x" * 256,
-            "%n" * 256,
-            "%s" * 256,
-            "%s%n%x%d" * 256,
-            "%s" * 256,
-            "%.1024d",
-            "%.2048d",
-            "%.4096d",
-            "%.8200d",
-            "%99999999999s",
-            "%99999999999d",
-            "%99999999999x",
-            "%99999999999n",
-            "%99999999999s" * 200,
-            "%99999999999d" * 200,
-            "%99999999999x" * 200,
-            "%99999999999n" * 200,
-            "%08x" * 100,
-            "%%20s" * 200,
-            "%%20x" * 200,
-            "%%20n" * 200,
-            "%%20d" * 200,
-            "%#0123456x%08x%x%s%p%n%d%o%u%c%h%l%q%j%z%Z%t%i%e%g%f%a%C%S%08x%%#0123456x%%x%%s%%p%%n%%d%%o%%u%%c%%h%%l%%q%%j%%z%%Z%%t%%i%%e%%g%%f%%a%%C%%S%%08x",
-            "'",
-            "\\",
-            "<",
-            "+",
-            "%",
-            "$",
-            "`"
-        ]
-
-        # End internal vars
-
-        # The "*_types" variables define which prefix, file extension
-        # and mime type is sent for the tests:
-        # prefix, file extension, mime type
-        # empty prefix = don't use prefix in front of filename
-        # empty file extension = don't use/cut the filename's file extension
-        # file extension == self._magick_original_extension, don't change whatever was there
-        # empty mime type = use default mime type found in the original base request
-
-        # The different extensions can vary in several ways:
-        # - the original extension the file had that was uploaded in the base request, self._marker_orig_ext, eg. .png
-        # - the payload extension, for example if we upload php code it would be .php
-        # - the real file extension, for example .gif if we produced a gif file that has php code in the comment
-
-        # TODO feature: Go through all TYPES and decide if .ORIG%00.EVIL makes sense as well as .EVIL%00.ORIG
-        # TODO feature: Additionally: maybe randomize casing, eg. .PdF?
-        # TODO feature: Reasoning about what _TYPES we should use. Make a big table that show what combinations we
-        # can send and which checks on the server side could be present. For each combination, note if the upload
-        # would succeed. Then rate the server side checks for likelihood to be implemented on a server (biased). In
-        # a next step, take real world samples and check manually to confirm rough likelihood... There are so many
-        # factors:
-        # CT whitelist (often in place)
-        # EXT whitelist (often in place but surprisingly often not as well...)
-        # CONTENT whitelist (eg. is it a PNG?)
-        #  CONTENT transformation (convert PNG to PNG with software X)
-        # Checks CT matches EXT -> I get the impression this is rarely done
-        # Checks CT matches CONTENT -> I get the impression this is rarely done
-        # Checks EXT matches CONTENT
-        # etc.
-
-        # The following var is a special case when we detect that the request doesn't include
-        # the filename or content-type (e.g. Vimeo image avatar upload), so we don't do 30
-        # identical requests with the exact same content. See the get_types function.
-        self.NO_TYPES = {'', '', ''}
-
-        # ImageTragick types
-        self.IM_SVG_TYPES = {
-            # ('', '', ''),
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', '', 'image/png'),
-            ('', '.svg', 'image/svg+xml'),
-            # ('', '.svg', 'text/xml'),
-            ('', '.png', 'image/png'),
-            # ('', '.jpeg', 'image/jpeg')
-        }
-
-        # Interesting fact: image/jpeg is not the only jpeg mime type sent by browsers::
-        # image/pjpeg
-        # image/x-citrix-pjpeg
-        # And also:
-        # image/x-citrix-gif
-
-        self.IM_MVG_TYPES = {
-            # ('', '', ''),
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', '', 'image/png'),
-            ('', '.mvg', ''),
-            ('', '.mvg', 'image/svg+xml'),
-            ('', '.png', 'image/png'),
-            # ('', '.jpeg', 'image/jpeg'),
-            ('mvg:', '.mvg', ''),
-            # ('mvg:', '.mvg', 'image/svg+xml'),
-        }
-
-        # Xbm black/white pictures
-        self.XBM_TYPES = {
-            # ('', '', ''),
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', '.xbm', ''),
-            ('', '.xbm', 'image/x-xbm'),
-            ('', '.xbm', 'image/png'),
-            ('xbm:', Constants.MARKER_ORIG_EXT, ''),
-        }
-
-        # Ghostscript types
-        self.GS_TYPES = {
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', '.gs', ''),
-            ('', '.eps', ''),
-            ('', Constants.MARKER_ORIG_EXT, 'text/plain'),
-            ('', '.jpeg', 'image/jpeg'),
-            ('', '.png', 'image/png'),
-        }
-
-        # LibAvFormat types
-        self.AV_TYPES = {
-            # ('', '', ''),
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', Constants.MARKER_ORIG_EXT, 'audio/mpegurl'),
-            ('', Constants.MARKER_ORIG_EXT, 'video/x-msvideo'),
-            # ('', '.m3u8', 'application/vnd.apple.mpegurl'),
-            ('', '.m3u8', 'application/mpegurl'),
-            # ('', '.m3u8', 'application/x-mpegurl'),
-            ('', '.m3u8', 'audio/mpegurl'),
-            # ('', '.m3u8', 'audio/x-mpegurl'),
-            ('', '.avi', 'video/x-msvideo'),
-            ('', '.avi', ''),
-        }
-
-        self.EICAR_TYPES = {
-            # ('', '', ''),
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', '.exe', ''),
-            ('', '.exe', 'application/x-msdownload'),
-            # ('', '.exe', 'application/octet-stream'),
-            # ('', '.exe', 'application/exe'),
-            # ('', '.exe', 'application/x-exe'),
-            # ('', '.exe', 'application/dos-exe'),
-            # ('', '.exe', 'application/msdos-windows'),
-            # ('', '.exe', 'application/x-msdos-program'),
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', Constants.MARKER_ORIG_EXT, 'application/x-msdownload'),
-            # ('', self._magick_original_extension, 'application/octet-stream'),
-            # ('', self._magick_original_extension, 'application/exe'),
-            # ('', self._magick_original_extension, 'application/x-exe'),
-            # ('', self._magick_original_extension, 'application/dos-exe'),
-            # ('', self._magick_original_extension, 'application/msdos-windows'),
-            # ('', self._magick_original_extension, 'application/x-msdos-program'),
-        }
-
-        self.PL_TYPES = {
-            #('', Constants.MARKER_ORIG_EXT, ''),
-            ('', Constants.MARKER_ORIG_EXT, 'text/x-perl-script'),
-            ('', '.pl', ''),
-            ('', '.pl', 'text/x-perl-script'),
-            ('', '.cgi', ''),
-            #('', '.cgi', 'text/x-perl-script'),
-        }
-
-        self.PY_TYPES = {
-            #('', Constants.MARKER_ORIG_EXT, ''),
-            ('', Constants.MARKER_ORIG_EXT, 'text/x-python-script'),
-            ('', '.py', ''),
-            ('', '.py', 'text/x-python-script'),
-            ('', '.cgi', '')
-        }
-
-        self.RB_TYPES = {
-            #('', Constants.MARKER_ORIG_EXT, ''),
-            ('', Constants.MARKER_ORIG_EXT, 'text/x-ruby-script'),
-            ('', '.rb', ''),
-            ('', '.rb', 'text/x-ruby-script'),
-        }
-
-        # .htaccess types
-        self.HTACCESS_TYPES = {
-            ('', '', ''),
-            ('', '%00' + Constants.MARKER_ORIG_EXT, ''),
-            ('', '\x00' + Constants.MARKER_ORIG_EXT, ''),
-            ('', '', 'text/plain'),
-            ('', '%00' + Constants.MARKER_ORIG_EXT, 'text/plain'),
-            ('', '\x00' + Constants.MARKER_ORIG_EXT, 'text/plain'),
-        }
-
-        self.PDF_TYPES = {
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', Constants.MARKER_ORIG_EXT, 'application/pdf'),
-            ('', '.pdf', ''),
-            ('', '.pdf', 'application/pdf'),
-        }
-
-        self.URL_TYPES = {
-            #('', Constants.MARKER_ORIG_EXT, ''),
-            #('', Constants.MARKER_ORIG_EXT, 'application/octet-stream'),
-            ('', '.URL', ''),
-            #('', '.URL', 'application/octet-stream'),
-        }
-
-        self.INI_TYPES = {
-            #('', Constants.MARKER_ORIG_EXT, ''),
-            #('', Constants.MARKER_ORIG_EXT, 'application/octet-stream'),
-            ('', '.ini', ''),
-            #('', '.URL', 'application/octet-stream'),
-        }
-
-        self.ZIP_TYPES = {
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', Constants.MARKER_ORIG_EXT, 'application/zip'),
-            ('', '.zip', ''),
-            ('', '.zip', 'application/zip'),
-        }
-
-        self.CSV_TYPES = {
-            # ('', '', ''),
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', '.csv', ''),
-            ('', '.csv', 'text/csv'),
-            # ('', self._marker_orig_ext, ''),
-            # ('', self._marker_orig_ext, 'text/csv'),
-        }
-
-        self.EXCEL_TYPES = {
-            # ('', '', ''),
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', '.xls', ''),
-            ('', '.xls', 'application/vnd.ms-excel'),
-            # ('', Constants.MARKER_ORIG_EXT, ''),
-            # ('', Constants.MARKER_ORIG_EXT, 'text/application/vnd.ms-excel'),
-        }
-
-        self.IQY_TYPES = {
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', '.iqy', ''),
-            ('', '.iqy', 'application/vnd.ms-excel'),
-        }
-
-        # Server Side Include types
-        # See also what file extensions the .htaccess module would enable!
-        # It is unlikely that a server accepts content type text/html...
-        self.SSI_TYPES = {
-            #('', '.shtml', 'text/plain'),
-            ('', '.shtml', 'text/html'),
-            #('', '.stm', 'text/html'),
-            #('', '.shtm', 'text/html'),
-            #('', '.html', 'text/html'),
-            #('', Constants.MARKER_ORIG_EXT, 'text/html'),
-            ('', '.shtml', ''),
-            ('', '.stm', ''),
-            ('', '.shtm', ''),
-            ('', '.html', ''),
-            ('', Constants.MARKER_ORIG_EXT, ''),
-        }
-
-        self.ESI_TYPES = {
-            ('', '.txt', 'text/plain'),
-            #('', '.txt', ''),
-            ('', Constants.MARKER_ORIG_EXT, ''),
-        }
-
-        self.SVG_TYPES = {
-            ('', Constants.MARKER_ORIG_EXT, ''), # Server doesn't check file contents
-            ('', '.svg', 'image/svg+xml'), # Server enforces matching of file ext and content type
-            ('', '.svg', ''), # Server doesn't check file ext
-            ('', Constants.MARKER_ORIG_EXT, 'image/svg+xml'), # Server doesn't check content-type
-        }
-
-        self.XML_TYPES = {
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', '.xml', 'application/xml'),
-            ('', '.xml', 'text/xml'),
-            #('', '.xml', 'text/plain'),
-            ('', '.xml', ''),
-            ('', Constants.MARKER_ORIG_EXT, 'text/xml'),
-        }
-
-        self.SWF_TYPES = {
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', '.swf', 'application/x-shockwave-flash'),
-            ('', '.swf', ''),
-            ('', Constants.MARKER_ORIG_EXT, 'application/x-shockwave-flash'),
-        }
-
-        self.HTML_TYPES = {
-            ('', Constants.MARKER_ORIG_EXT, ''),
-            ('', '.htm', ''),
-            ('', '.html', ''),
-            ('', '.htm', 'text/html'),
-            #('', '.html', 'text/html'),
-            ('', '.html', 'text/plain'),
-            ('', '.xhtml', ''),
-            #('', Constants.MARKER_ORIG_EXT, 'text/html'),
-        }
-
         print("Creating UI...")
         self._create_ui()
 
@@ -1214,7 +911,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                      "which contains a burp colaborator URL. This means that Server Side Request Forgery is possible. " \
                      "Check https://imagetragick.com/ for more details about CVE-2016-3718. Interactions for CVE-2016-3718:<br><br>"
             issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.IM_MVG_TYPES, basename, content_mvg, issue))
+            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.IM_MVG_TYPES, basename, content_mvg, issue))
         return colab_tests
 
     def _imagetragick_cve_2016_3714_sleep(self, injector):
@@ -1240,11 +937,11 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             if injector.opts.file_formats['mvg'].isSelected():
                 issue = self._create_issue_template(injector.get_brr(), name, detail.format("MVG", cmd), confidence, severity)
                 content_mvg = mvg.format(injector.opts.image_width, injector.opts.image_height, cmd, injector.opts.sleep_time * factor, args)
-                self._send_sleep_based(injector, filename + "Mvg" + cmd_name, content_mvg, self.IM_MVG_TYPES, injector.opts.sleep_time, issue)
+                self._send_sleep_based(injector, filename + "Mvg" + cmd_name, content_mvg, Constants.IM_MVG_TYPES, injector.opts.sleep_time, issue)
             if injector.opts.file_formats['svg'].isSelected():
                 issue = self._create_issue_template(injector.get_brr(), name, detail.format("SVG", cmd), confidence, severity)
                 content_svg = svg.format(injector.opts.image_width, injector.opts.image_height, cmd, injector.opts.sleep_time * factor, args, injector.opts.image_height, injector.opts.image_width)
-                self._send_sleep_based(injector, filename + "Svg" + cmd_name, content_svg, self.IM_SVG_TYPES, injector.opts.sleep_time, issue)
+                self._send_sleep_based(injector, filename + "Svg" + cmd_name, content_svg, Constants.IM_SVG_TYPES, injector.opts.sleep_time, issue)
 
         return []
 
@@ -1256,7 +953,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         basename = Constants.DOWNLOAD_ME + Constants.FILE_START + "BadManners"
         content = Xbm("".join(random.sample(string.ascii_letters, 5))).create_xbm(injector.opts.image_width,
                                    injector.opts.image_height)
-        urrs = self._send_simple(injector, self.XBM_TYPES, basename, content, redownload=True)
+        urrs = self._send_simple(injector, Constants.XBM_TYPES, basename, content, redownload=True)
         for urr in urrs:
             if urr and urr.download_rr:
                 resp = urr.download_rr.getResponse()
@@ -1360,14 +1057,14 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             if injector.opts.file_formats['mvg'].isSelected():
                 issue = self._create_issue_template(injector.get_brr(), name, detail.format("MVG", cmd), confidence, severity)
                 content_mvg = mvg.format(injector.opts.image_width, injector.opts.image_height, cmd, server)
-                colab_tests.extend(self._send_collaborator(injector, burp_colab, self.IM_MVG_TYPES, basename + "Mvg" + cmd_name,
+                colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.IM_MVG_TYPES, basename + "Mvg" + cmd_name,
                                                            content_mvg, issue, replace=replace))
 
             if injector.opts.file_formats['svg'].isSelected():
                 issue = self._create_issue_template(injector.get_brr(), name, detail.format("SVG", cmd), confidence, severity)
                 content_svg = svg.format(injector.opts.image_width, injector.opts.image_height, cmd, server,
                                          injector.opts.image_height, injector.opts.image_width)
-                colab_tests.extend(self._send_collaborator(injector, burp_colab, self.IM_SVG_TYPES, basename + "Svg" + cmd_name,
+                colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.IM_SVG_TYPES, basename + "Svg" + cmd_name,
                                                            content_svg, issue, replace=replace))
 
         return colab_tests
@@ -1456,7 +1153,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 } if"""
         # As we do not want to regex search with a DownloadMatcher (too error prone), we only check if a ReDownloader
         # was configured and we know the response
-        urrs = self._send_simple(injector, self.GS_TYPES, basename, content, redownload=True)
+        urrs = self._send_simple(injector, Constants.GS_TYPES, basename, content, redownload=True)
         for urr in urrs:
             if urr and urr.download_rr:
                 resp = urr.download_rr.getResponse()
@@ -1553,7 +1250,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                     cmd,
                     str(injector.opts.sleep_time * factor) + args
                 )
-                self._send_sleep_based(injector, basename + cmd_name, sleep_content, self.GS_TYPES, injector.opts.sleep_time, issue)
+                self._send_sleep_based(injector, basename + cmd_name, sleep_content, Constants.GS_TYPES, injector.opts.sleep_time, issue)
 
         # Burp community edition doesn't have Burp collaborator
         if not burp_colab:
@@ -1572,7 +1269,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                     cmd,
                     server
                 )
-                colab_tests.extend(self._send_collaborator(injector, burp_colab, self.GS_TYPES, basename + param + cmd_name,
+                colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.GS_TYPES, basename + param + cmd_name,
                                                            attack, issue, replace=replace, redownload=True))
 
         return colab_tests
@@ -1596,7 +1293,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                  "local file include. Interactions:<br><br>"
         issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
 
-        colabs = self._send_collaborator(injector, burp_colab, self.AV_TYPES,
+        colabs = self._send_collaborator(injector, burp_colab, Constants.AV_TYPES,
                                        basename + "M3u", content_m3u8, issue)
 
         # avi file with m3u as described on https://hackerone.com/reports/226756
@@ -1614,7 +1311,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
 
         #Yes this looks weird here that we pass content_m3u8, but that's correct
-        colabs2 = self._send_collaborator(injector, burp_colab, self.AV_TYPES,
+        colabs2 = self._send_collaborator(injector, burp_colab, Constants.AV_TYPES,
                                          basename + "AviM3u", content_m3u8, issue, replace=avi_generator.get_avi_file)
 
         colabs.extend(colabs2)
@@ -2094,7 +1791,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                "executed. ".format(htaccess, content)
         issue = self._create_issue_template(injector.get_brr(), title, desc, "Firm", "Medium")
 
-        urrs = self._send_simple(injector, self.HTACCESS_TYPES, htaccess, content, redownload=True, randomize=False)
+        urrs = self._send_simple(injector, Constants.HTACCESS_TYPES, htaccess, content, redownload=True, randomize=False)
         # We only need to do this for one, not for all
         urr = urrs[0]
         if urr and urr.download_rr:
@@ -2227,7 +1924,7 @@ Response.write(a&c&b)
         issue_colab = self._create_issue_template(injector.get_brr(), title, detail_colab, "Certain", "High")
         self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=expect))
         # We do not need to call self._send_simple here as in this case the send_collaborator will be sufficient
-        colab_tests.extend(self._send_collaborator(injector, burp_colab, self.PL_TYPES, basename, content_perl, issue_colab,
+        colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.PL_TYPES, basename, content_perl, issue_colab,
                                                redownload=True, replace=replace_list))
 
 
@@ -2266,7 +1963,7 @@ Response.write(a&c&b)
         issue_colab = self._create_issue_template(injector.get_brr(), title, detail_colab, "Certain", "High")
         self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=expect))
         # We do not need to call self._send_simple here as in this case the send_collaborator will be sufficient
-        colab_tests.extend(self._send_collaborator(injector, burp_colab, self.PY_TYPES, basename, content_python, issue_colab,
+        colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.PY_TYPES, basename, content_python, issue_colab,
                                                    redownload=True, replace="test.example.org"))
 
 
@@ -2300,7 +1997,7 @@ Response.write(a&c&b)
         issue_colab = self._create_issue_template(injector.get_brr(), title, detail_colab, "Certain", "High")
         self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=expect))
         # We do not need to call self._send_simple here as in this case the send_collaborator will be sufficient
-        colab_tests.extend(self._send_collaborator(injector, burp_colab, self.RB_TYPES, basename, content_ruby, issue_colab,
+        colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.RB_TYPES, basename, content_ruby, issue_colab,
                                                    redownload=True, replace="test.example.org"))
 
         # Not going to add as a feature: elf binary .cgi files
@@ -2336,7 +2033,7 @@ Response.write(a&c&b)
         detail = main_detail.format(cgi.escape(content), cgi.escape(expect))
         issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
         self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
-        self._send_simple(injector, self.SSI_TYPES, basename, content, redownload=True)
+        self._send_simple(injector, Constants.SSI_TYPES, basename, content, redownload=True)
 
         # Reflected nslookup - File metadata
         bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._globalOptionsPanel.image_exiftool)
@@ -2347,7 +2044,7 @@ Response.write(a&c&b)
             detail = detail.format(cgi.escape(content), cgi.escape(expect), name)
             issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
-            self._send_simple(injector, self.SSI_TYPES, basename, content, redownload=True)
+            self._send_simple(injector, Constants.SSI_TYPES, basename, content, redownload=True)
 
         # TODO: Decide if additional sleep based payloads would make sense, probably rather not
 
@@ -2369,7 +2066,7 @@ Response.write(a&c&b)
             content = '<!--#exec cmd="{} {}" -->'.format(cmd, server)
             detail = "{}A {} payload was used. <br>Interactions: <br><br>".format(base_detail, cmd_name)
             issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SSI_TYPES, basename,
+            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.SSI_TYPES, basename,
                                                        content, issue, replace=replace, redownload=True))
 
         # RCE with Burp collaborator - File metadata
@@ -2386,7 +2083,7 @@ Response.write(a&c&b)
             basename = Constants.DOWNLOAD_ME + Constants.FILE_START + "SsiBfRce" + name
             desc = base_desc.format(cgi.escape(name), cgi.escape(cmd_name))
             issue = self._create_issue_template(injector.get_brr(), issue_name, base_detail + desc, confidence, severity)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SSI_TYPES, basename,
+            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.SSI_TYPES, basename,
                                                        content, issue, replace=ssicolab.placeholder, redownload=True))
 
         return colab_tests
@@ -2415,7 +2112,7 @@ Response.write(a&c&b)
         detail = base_detail.format(cgi.escape(content), cgi.escape(expect))
         issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
         self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
-        self._send_simple(injector, self.ESI_TYPES, basename, content, redownload=True)
+        self._send_simple(injector, Constants.ESI_TYPES, basename, content, redownload=True)
 
         # Reflected nslookup - File metadata
         bi = BackdooredFile(injector.opts.get_enabled_file_formats(), self._globalOptionsPanel.image_exiftool)
@@ -2426,7 +2123,7 @@ Response.write(a&c&b)
             detail = detail.format(cgi.escape(content), cgi.escape(expect), name)
             issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
-            self._send_simple(injector, self.ESI_TYPES, basename, content, redownload=True)
+            self._send_simple(injector, Constants.ESI_TYPES, basename, content, redownload=True)
 
         # Burp community edition doesn't have Burp collaborator
         if not burp_colab:
@@ -2445,7 +2142,7 @@ Response.write(a&c&b)
                  "that ESI attacks result in successful Burp Collaborator interactions, this is also likely to " \
                  "be a Squid proxy, which is one of the few proxies that support that.<br>Interactions: <br><br>"
         issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
-        colab_tests.extend(self._send_collaborator(injector, burp_colab, self.ESI_TYPES, basename,
+        colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.ESI_TYPES, basename,
                                                    content, issue, redownload=True))
 
         # Not doing the metadata file + Burp Collaborator approach here, as that seems to be a waste of requests as explained
@@ -2481,7 +2178,7 @@ Response.write(a&c&b)
                      "Usually you will be able to read local files, eg. local pictures. " \
                      "Interactions:<br><br>".format(Constants.MARKER_COLLAB_URL)
             issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SVG_TYPES, basename, content_xlink, issue,
+            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.SVG_TYPES, basename, content_xlink, issue,
                                                   redownload=True))
 
             # External iFrame according to https://twitter.com/akhilreni_hs/status/1113762867881185281 and
@@ -2500,7 +2197,7 @@ Response.write(a&c&b)
                      "Usually you will be able to read local files, eg. local pictures. " \
                      "Interactions:<br><br>".format(Constants.MARKER_COLLAB_URL)
             issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SVG_TYPES, basename, content_iframe, issue,
+            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.SVG_TYPES, basename, content_iframe, issue,
                                                        redownload=True))
 
 
@@ -2512,7 +2209,7 @@ Response.write(a&c&b)
             passwd_svg = base_svg
             passwd_svg = passwd_svg.replace(root_tag, ref)
             passwd_svg = passwd_svg.replace(text_tag, '<text x="0" y="20" font-size="20">&xxe;</text>')
-            urrs = self._send_simple(injector, self.SVG_TYPES, basename, passwd_svg, redownload=True)
+            urrs = self._send_simple(injector, Constants.SVG_TYPES, basename, passwd_svg, redownload=True)
             for urr in urrs:
                 if urr and urr.download_rr:
                     resp = urr.download_rr.getResponse()
@@ -2543,7 +2240,7 @@ Response.write(a&c&b)
                          "Interactions:<br><br>"
                 issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
                 colab_tests.extend(
-                    self._send_collaborator(injector, burp_colab, self.SVG_TYPES, basename, svg, issue,
+                    self._send_collaborator(injector, burp_colab, Constants.SVG_TYPES, basename, svg, issue,
                                             redownload=True))
 
         return colab_tests
@@ -2571,7 +2268,7 @@ Response.write(a&c&b)
                      "Usually you will be able to read local files, eg. local pictures. " \
                      "Interactions:<br><br>".format(Constants.MARKER_COLLAB_URL)
             issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.SVG_TYPES, basename, base_svg, issue, redownload=True))
+            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.SVG_TYPES, basename, base_svg, issue, redownload=True))
         return colab_tests
 
     def _xxe_xml(self, injector, burp_colab):
@@ -2597,7 +2294,7 @@ Response.write(a&c&b)
                          "Usually you will be able to read local files and do SSRF. This issue needs further manual investigation." \
                          "Interactions:<br><br>"
                 issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
-                colab_tests.extend(self._send_collaborator(injector, burp_colab, self.XML_TYPES, basename, xml, issue, redownload=True))
+                colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.XML_TYPES, basename, xml, issue, redownload=True))
 
         return colab_tests
 
@@ -2645,7 +2342,7 @@ Response.write(a&c&b)
             desc = 'XSS via HTML file upload and download. '
             issue = self._create_issue_template(injector.get_brr(), title, desc, "Firm", "High")
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=content, check_xss=True))
-            self._send_simple(injector, self.HTML_TYPES, basename, content, redownload=True)
+            self._send_simple(injector, Constants.HTML_TYPES, basename, content, redownload=True)
         return []
 
     def _xss_svg(self, injector):
@@ -2660,7 +2357,7 @@ Response.write(a&c&b)
             desc = 'XSS through SVG upload and download as SVG can include JavaScript and will execute same origin.'
             issue = self._create_issue_template(injector.get_brr(), title, desc, "Firm", "High")
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=content_svg, check_xss=True))
-            self._send_simple(injector, self.SVG_TYPES, basename, content_svg, redownload=True)
+            self._send_simple(injector, Constants.SVG_TYPES, basename, content_svg, redownload=True)
         return []
 
     def _xss_swf(self, injector):
@@ -2687,7 +2384,7 @@ Response.write(a&c&b)
             issue = self._create_issue_template(injector.get_brr(), title, desc, "Firm", "Medium")
             # TODO feature: Check if other content_types work too rather than only application/x-shockwave-flash...
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=content, check_xss=True))
-            self._send_simple(injector, self.SWF_TYPES, basename, content, redownload=True)
+            self._send_simple(injector, Constants.SWF_TYPES, basename, content, redownload=True)
         return []
 
     def _xss_payload(self):
@@ -2708,7 +2405,7 @@ Response.write(a&c&b)
                     'works for XSS, meaning that HTML injection is possible.'
             issue = self._create_issue_template(injector.get_brr(), title, desc, "Firm", "High")
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect, check_xss=True))
-            self._send_simple(injector, self.HTML_TYPES, basename, content, redownload=True)
+            self._send_simple(injector, Constants.HTML_TYPES, basename, content, redownload=True)
         return []
 
     def _eicar(self, injector):
@@ -2726,7 +2423,7 @@ Response.write(a&c&b)
                'to upload an executable (e.g. with the recrusive uploader module of the UploadScanner).'
         issue = self._create_issue_template(injector.get_brr(), title, desc, "Tentative", "Low")
         self.dl_matchers.add(DownloadMatcher(issue, filecontent=content_eicar))
-        self._send_simple(injector, self.EICAR_TYPES, basename, content_eicar, redownload=True)
+        self._send_simple(injector, Constants.EICAR_TYPES, basename, content_eicar, redownload=True)
         return []
 
     def _pdf(self, injector, burp_colab):
@@ -2757,7 +2454,7 @@ Response.write(a&c&b)
                    'The file that was uploaded here is from Ange Albertini and located at https://github.com/corkami/pocs/blob/master/pdf/javascript.pdf'
             issue = self._create_issue_template(injector.get_brr(), title, desc, "Tentative", "Low")
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=content))
-            self._send_simple(injector, self.PDF_TYPES, basename, content, redownload=True)
+            self._send_simple(injector, Constants.PDF_TYPES, basename, content, redownload=True)
 
             # Burp community edition doesn't have Burp collaborator
             if not burp_colab:
@@ -2836,8 +2533,8 @@ trailer
             issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Tentative", "Low")
             issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
             self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
-            self._send_simple(injector, self.PDF_TYPES, basename + "Mal", content, redownload=True)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.PDF_TYPES, basename + "Colab", content, issue_colab,
+            self._send_simple(injector, Constants.PDF_TYPES, basename + "Mal", content, redownload=True)
+            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.PDF_TYPES, basename + "Colab", content, issue_colab,
                                replace="test.example.org", redownload=True))
 
             content = '''% a pdf file where javascript code is evaluated for execution
@@ -2878,8 +2575,8 @@ trailer
             issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Tentative", "Low")
             issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
             self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
-            self._send_simple(injector, self.PDF_TYPES, basename + "Mal", content, redownload=True)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.PDF_TYPES, basename + "Colab", content, issue_colab,
+            self._send_simple(injector, Constants.PDF_TYPES, basename + "Mal", content, redownload=True)
+            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.PDF_TYPES, basename + "Colab", content, issue_colab,
                                                        redownload=True))
 
             content = '''% a PDF file using an XFA
@@ -2946,8 +2643,8 @@ trailer <<
             issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Tentative", "Low")
             issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
             self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
-            self._send_simple(injector, self.PDF_TYPES, basename + "Mal", content, redownload=True)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.PDF_TYPES, basename + "Colab", content, issue_colab,
+            self._send_simple(injector, Constants.PDF_TYPES, basename + "Mal", content, redownload=True)
+            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.PDF_TYPES, basename + "Colab", content, issue_colab,
                                                        redownload=True))
 
         return colab_tests
@@ -2980,8 +2677,8 @@ trailer <<
         issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Tentative", "Low")
         issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
         self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
-        self._send_simple(injector, self.URL_TYPES, basename + "Mal", content, redownload=True)
-        colab_tests.extend(self._send_collaborator(injector, burp_colab, self.URL_TYPES, basename + "Colab", content, issue_colab,
+        self._send_simple(injector, Constants.URL_TYPES, basename + "Mal", content, redownload=True)
+        colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.URL_TYPES, basename + "Colab", content, issue_colab,
                                                    redownload=True, replace="test.example.org"))
 
         # The same with Desktop.ini
@@ -3002,8 +2699,8 @@ trailer <<
         issue_download = self._create_issue_template(injector.get_brr(), title_download, detail_download, "Tentative", "Low")
         issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
         self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
-        self._send_simple(injector, self.INI_TYPES, "Desktop", content, redownload=True, randomize=False)
-        colab_tests.extend(self._send_collaborator(injector, burp_colab, self.INI_TYPES, "Desktop", content, issue_colab,
+        self._send_simple(injector, Constants.INI_TYPES, "Desktop", content, redownload=True, randomize=False)
+        colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.INI_TYPES, "Desktop", content, issue_colab,
                                                    redownload=True, replace="test.example.org", randomize=False))
 
         return colab_tests
@@ -3027,7 +2724,7 @@ trailer <<
                 issue = self._create_issue_template(injector.get_brr(), title_download, desc_download.format(formula, software_name), "Tentative", "Low")
                 # Do simple upload/download based
                 self.dl_matchers.add(DownloadMatcher(issue, filecontent=formula))
-                self._send_simple(injector, self.CSV_TYPES, basename + "Mal", formula, redownload=True)
+                self._send_simple(injector, Constants.CSV_TYPES, basename + "Mal", formula, redownload=True)
                 # TODO: Decide if additional sleep based payloads would make sense, probably rather not
                 if burp_colab:
                     # Also do collaborator based:
@@ -3050,7 +2747,7 @@ trailer <<
                             # Injecting a collaborator URL with http:// and https:// etc. would be possible here
                             # but as we already pass this as an insertion point for active scan we don't do this here
                         for index, content in enumerate(file_contents):
-                            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.CSV_TYPES, basename + "Colab" + str(index),
+                            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.CSV_TYPES, basename + "Colab" + str(index),
                                                                         content, issue, replace=replace, redownload=True))
 
         if injector.opts.file_formats['xlsx'].isSelected():
@@ -3140,7 +2837,7 @@ trailer <<
                    "https://www.contextis.com/resources/blog/comma-separated-vulnerabilities/ for more details."
             issue = self._create_issue_template(injector.get_brr(), title, desc, "Tentative", "Low")
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=content_excel))
-            self._send_simple(injector, self.EXCEL_TYPES, basename, content_excel, redownload=True)
+            self._send_simple(injector, Constants.EXCEL_TYPES, basename, content_excel, redownload=True)
             # TODO feature: Burp collaborator based for Excel format...
 
         basename = Constants.DOWNLOAD_ME + Constants.FILE_START + "IqyExcel"
@@ -3151,13 +2848,13 @@ trailer <<
         content = 'WEB\r\n1\r\n{}["a","Please Enter Your Password"]'.format(Constants.MARKER_COLLAB_URL)
         issue = self._create_issue_template(injector.get_brr(), title, desc, "Tentative", "Low")
         self.dl_matchers.add(DownloadMatcher(issue, filecontent=content))
-        self._send_simple(injector, self.IQY_TYPES, basename + "Mal", content, redownload=True)
+        self._send_simple(injector, Constants.IQY_TYPES, basename + "Mal", content, redownload=True)
         if burp_colab:
             # Also do collaborator based:
             desc += "<br>In this case we actually detected that interactions took place, meaning the server executed " \
                     "the payload. Interactions: <br><br>"
             issue = self._create_issue_template(injector.get_brr(), "Malicious IQY Collaborator Interaction", desc, "Firm", "High")
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, self.IQY_TYPES, basename + "Colab",
+            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.IQY_TYPES, basename + "Colab",
                                                        content, issue, redownload=True))
 
         # TODO Burp API limitation: We could include a Link in a spreadsheet document and hope/wait for someone
@@ -3208,7 +2905,7 @@ trailer <<
                 # If we check for the entire content to not be included, these will match eacht other
                 # However, if we require that PK is not in the response, then it won't match any of the zip files
                 self.dl_matchers.add(DownloadMatcher(issue, filecontent=filecontent, not_in_filecontent="PK"))
-                self._send_simple(injector, self.ZIP_TYPES, basename, content)
+                self._send_simple(injector, Constants.ZIP_TYPES, basename, content)
 
     def _polyglot(self, injector, burp_colab):
         colab_tests = []
@@ -3313,7 +3010,7 @@ trailer <<
         desc += 'file was taken from https://code.google.com/archive/p/corkami/downloads?page=2 . '
         issue = self._create_issue_template(injector.get_brr(), title, desc, "Firm", "Low")
         self.dl_matchers.add(DownloadMatcher(issue, filecontent=content, check_not_content_disposition=True))
-        self._send_simple(injector, self.PDF_TYPES, basename, content, redownload=True)
+        self._send_simple(injector, Constants.PDF_TYPES, basename, content, redownload=True)
 
         if injector.opts.file_formats['zip'].isSelected():
             basename = Constants.DOWNLOAD_ME + Constants.FILE_START + "JsZip"
@@ -3327,7 +3024,7 @@ trailer <<
                     'to start at the beginning of the file, some implementations unzip this file just fine. '
             issue = self._create_issue_template(injector.get_brr(), title, desc, "Firm", "Low")
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=content, check_not_content_disposition=True))
-            self._send_simple(injector, self.ZIP_TYPES, basename, content, redownload=True)
+            self._send_simple(injector, Constants.ZIP_TYPES, basename, content, redownload=True)
 
         return colab_tests
 
@@ -3699,7 +3396,7 @@ trailer <<
             new_content = copy.copy(content)
             index = random.choice(xrange(0, len(new_content)))
             print("At byte index", index, "inserted known fuzz string")
-            new_content = new_content[:index] + random.choice(self.KNOWN_FUZZ_STRINGS) + new_content[index + 1:]
+            new_content = new_content[:index] + random.choice(Constants.KNOWN_FUZZ_STRINGS) + new_content[index + 1:]
             name, ext = os.path.splitext(orig_filename)
             new_filename = name + str(name_increment) + ext
             name_increment += 1
@@ -4388,7 +4085,7 @@ trailer <<
                 service = base_request_response.getHttpService()
                 url = self._helpers.analyzeRequest(base_request_response).getUrl()
                 brr = CustomRequestResponse("", "", base_request_response.getHttpService(), req, None)
-                csi = CustomScanIssue([brr, ], "File upload connection timeout", desc, "Certain", "Information",
+                csi = CustomScanIssue(brr, "File upload connection timeout", desc, "Certain", "Information",
                                       service, url)
                 self._add_scan_issue(csi)
         if throttle and injector.opts.throttle_time > 0.0:

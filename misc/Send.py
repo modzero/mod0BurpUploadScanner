@@ -85,7 +85,7 @@ class Send():
                 service = base_request_response.getHttpService()
                 url = self._helpers.analyzeRequest(base_request_response).getUrl()
                 brr = CustomRequestResponse("", "", base_request_response.getHttpService(), req, None)
-                csi = CustomScanIssue([brr, ], "File upload connection timeout", desc, "Certain", "Information",
+                csi = CustomScanIssue(brr, "File upload connection timeout", desc, "Certain", "Information",
                                       service, url)
                 self._add_scan_issue(csi)
         if throttle and injector.opts.throttle_time > 0.0:
