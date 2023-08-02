@@ -29,7 +29,7 @@ from ui.LogEntry import LogEntry
 from ui.Table import Table
 from misc.Misc import CloseableTab
 from misc.Misc import ColabTest
-from misc.Misc import CollaboratorMonitorThread
+from misc.BurpCollaborator import CollaboratorMonitorThread
 from misc.Downloader import DownloadMatcher
 from misc.Downloader import DownloadMatcherCollection
 from misc.Misc import MenuItemAction
@@ -41,7 +41,7 @@ from misc.Misc import Xbm
 from misc.Misc import Xxe
 from misc.Misc import XxeOfficeDoc
 from misc.Misc import XxeXmp
-from misc.Misc import BurpCollaborator
+from misc.BurpCollaborator import BurpCollaborator
 from checks.php_rce import php_rce_check
 
 # Java stdlib imports

@@ -2,7 +2,7 @@ from helpers.FloydsHelpers import FloydsHelpers
 from misc.Constants import Constants
 import threading
 from misc.CustomScanIssue import CustomScanIssue
-
+import urlparse  # urlparser for custom HTTP services
 
 import urllib
 
