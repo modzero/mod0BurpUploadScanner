@@ -551,9 +551,6 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 # reversed, we hit the correct issue definition first.
                 for matcher in list(matchers)[::-1]:
                     if matcher.matches(url, headers, body):
-                        print("\n======Match on:" + url)
-                        print("\n======issue:" + str(matcher.issue))
-                        print("\n======issue.url:" + str(matcher.issue.getUrl))
                         issue_copy = matcher.issue.create_copy()
                         if Constants.MARKER_URL_CONTENT in issue_copy.detail:
                             if matcher.url_content:
