@@ -11,9 +11,10 @@ from ui.LogEntry import LogEntry
 
 
 class Send():
-    def __init__(self, callbacks):
+    def __init__(self, callbacks, burp_extender):
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()
+        self.burp_extender = burp_extender
 
     def simple(self, injector, all_types, basename, content, redownload=False, randomize=True):
         i = 0
@@ -29,11 +30,11 @@ class Send():
             req = injector.get_request(sent_filename, new_content, content_type=mime_type)
             i += 1
             if req:
-                x = Send()._filename_to_expected(sent_filename)
+                x = self._filename_to_expected(sent_filename)
                 if redownload:
-                    urrs.append(Send()._make_http_request(injector, req, redownload_filename=x))
+                    urrs.append(self._make_http_request(injector, req, redownload_filename=x))
                 else:
-                    urrs.append(Send()._make_http_request(injector, req))
+                    urrs.append(self._make_http_request(injector, req))
         return urrs
     
     def _make_http_request(self, injector, req, report_timeouts=True, throttle=True, redownload_filename=None):
@@ -65,7 +66,7 @@ class Send():
             urr = UploadRequestsResponses(upload_rr)
             if injector.opts.create_log:
                 # create a new log entry with the message details
-                self.add_log_entry(upload_rr)
+                self.burp_extender.add_log_entry(upload_rr)
             if redownload_filename and injector.opts.redl_enabled and injector.opts.redl_configured:
                 preflight_rr, download_rr = injector.opts.redownloader_try_redownload(resp, redownload_filename)
                 urr.preflight_rr = preflight_rr
@@ -73,9 +74,9 @@ class Send():
                 if injector.opts.create_log:
                     # create a new log entry with the message details
                     if urr.preflight_rr:
-                        self.add_log_entry(urr.preflight_rr)
+                        self.burp_extender.add_log_entry(urr.preflight_rr)
                     if urr.download_rr:
-                        self.add_log_entry(urr.download_rr)
+                        self.burp_extender.add_log_entry(urr.download_rr)
         else:
             urr = None
             if report_timeouts:
@@ -92,8 +93,7 @@ class Send():
             time.sleep(injector.opts.throttle_time)
         return urr
         
-    @staticmethod
-    def _filename_to_expected(filename):
+    def _filename_to_expected(self, filename):
         # TODO feature: maybe try to download both?
         # For filenames that include %00 or \x00 we assume we require the server to truncate there
         # so we want to redownload the truncated file name:
@@ -101,11 +101,3 @@ class Send():
             if nullstr in filename:
                 filename = filename[:filename.index(nullstr)]
         return filename
-    
-    def add_log_entry(self, rr):
-        with self.globals_write_lock:
-            row = self._log.size()
-            status = self._helpers.analyzeResponse(rr.getResponse()).getStatusCode()
-            self._log.add(LogEntry(status, self._callbacks.saveBuffersToTempFiles(rr),
-                               self._helpers.analyzeRequest(rr).getUrl()))
-            self.fireTableRowsInserted(row, row)

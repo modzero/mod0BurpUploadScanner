@@ -7,9 +7,10 @@ from misc.Send import Send
 
 
 class attacks():
-    def __init__(self, callback_helpers, dl_matchers):
-        self.callback_helpers = callback_helpers 
+    def __init__(self, callbacks, dl_matchers, burp_extender):
+        self.callbacks = callbacks 
         self.dl_matchers = dl_matchers
+        self.sender = Send(callbacks, burp_extender)
 
     def _servercode_rce_backdoored_file(self, injector, payload_func, param_func, globalOptionsPanel, formats=None, ):
         bi = BackdooredFile(injector.opts.get_enabled_file_formats(), globalOptionsPanel.image_exiftool)
@@ -23,9 +24,9 @@ class attacks():
             desc = 'Remote command execution through {} payload in Metadata of type {}. The server replaced the code {} inside ' \
                    'the uploaded file with {} only, meaning that {} code ' \
                    'execution is possible.'.format(lang, name, cgi.escape(payload), expect, lang)
-            issue = CustomScanIssue(injector.get_brr(), self.callback_helpers, title, desc, "Certain", "High")
+            issue = CustomScanIssue(injector.get_brr(), self.callbacks, title, desc, "Certain", "High")
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
-            Send.simple(injector, types, basename, content, redownload=True)
+            self.sender.simple(injector, types, basename, content, redownload=True)
 
 
     def _servercode_rce_png_idatchunk_phponly(self, injector, types):
@@ -54,9 +55,9 @@ class attacks():
                    ' {} inside the uploaded image but failed, meaning that {} code execution seems possible. Usually ' \
                    'the server will respond with only the start of the file which has length {} and cut off the rest. ' \
                    'Also, it usually responds with an HTTP 500 error.'.format(lang, cgi.escape(code), lang, str(len(content_start)))
-            issue = CustomScanIssue(injector.get_brr(), self.callback_helpers, title, desc, "Tentative", "High")
+            issue = CustomScanIssue(injector.get_brr(), self.callbacks, title, desc, "Tentative", "High")
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=expected_download_content, not_in_filecontent=code))
-            Send.simple(injector, types, basename, content, redownload=True)
+            self.sender.simple(injector, types, basename, content, redownload=True)
 
     def _servercode_rce_simple(self, injector, payload_func, param_func):
         payload, expect = payload_func()
@@ -66,9 +67,9 @@ class attacks():
         desc = 'Remote command execution through {} payload in a normal {} file. The server replaced the code {} inside ' \
                'the uploaded file with {} only, meaning that {} code ' \
                'execution is possible.'.format(lang, lang, cgi.escape(payload), expect, lang)
-        issue = CustomScanIssue(injector.get_brr(), self.callback_helpers, title, desc, "Certain", "High")
+        issue = CustomScanIssue(injector.get_brr(), self.callbacks, title, desc, "Certain", "High")
         self.dl_matchers.add(DownloadMatcher(issue, filecontent=expect))
-        Send.simple(injector, types, basename, content, redownload=True)
+        self.sender.simple(injector, types, basename, content, redownload=True)
 
         
     def _servercode_rce_gif_content(self, injector, lang, payload_exact_13_len, types, expect="AB"):
@@ -181,6 +182,6 @@ class attacks():
                    "{} code execution seems possible. This image survives PHP's getimagesize() and imagecreatefromgif(), therefore" \
                    " it is likely that in general the part where the payload was injected into the image might survive other " \
                    "conversions too.".format(lang, cgi.escape(payload_exact_13_len), expect, lang)
-            issue = CustomScanIssue(injector.get_brr(), self.callback_helpers, title, desc, "Certain", "High")
+            issue = CustomScanIssue(injector.get_brr(), self.callbacks, title, desc, "Certain", "High")
             self.dl_matchers.add(DownloadMatcher(issue, filecontent=expected_download_content))
-            Send.simple(injector, types, basename, content, redownload=True)
+            self.sender.simple(injector, types, basename, content, redownload=True)

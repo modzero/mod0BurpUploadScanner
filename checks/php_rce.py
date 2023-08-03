@@ -4,8 +4,8 @@ from checks.attacks import attacks
 from misc.Constants import Constants
 
 class php_rce_check():
-    def __init__(self, injector, globalOptionsPanel, callback_helpers, dl_matchers):
-        self.attacks = attacks(callback_helpers, dl_matchers)
+    def __init__(self, injector, globalOptionsPanel, callbacks, dl_matchers, burp_extender):
+        self.attacks = attacks(callbacks, dl_matchers, burp_extender)
         self.check(injector, globalOptionsPanel)
 
     def check(self, injector, globalOptionsPanel):
