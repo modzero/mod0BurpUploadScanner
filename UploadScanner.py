@@ -1717,7 +1717,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             if path:
                 path_no_filename = path.rsplit("/", 1)[0] + "/"
                 self.dl_matchers.add(DownloadMatcher(issue, filecontent="Index of /", url_content=path_no_filename))
-                self._send_get_request(urr.download_rr, path_no_filename, injector.opts.create_log)
+                self.sender.send_get_request(urr.download_rr, path_no_filename, injector.opts.create_log)
 
         if not burp_colab:
             return []
@@ -3769,37 +3769,6 @@ trailer <<
             yield "Sleep", "sleep", 1, ""
             # Windows
             yield "Ping", "ping -n", 2, " localhost"
-
-    def _send_get_request(self, brr, relative_url, create_log):
-        # Simply tries to send brr but as a GET request and to a different URL
-        service = brr.getHttpService()
-        iRequestInfo = self._helpers.analyzeRequest(brr)
-        new_req = "GET " + relative_url + " HTTP/1.1" + Constants.NEWLINE
-        headers = iRequestInfo.getHeaders()
-        # very strange, Burp seems to include the status line in .getHeaders()...
-        headers = headers[1:]
-        new_headers = []
-        for header in headers:
-            is_bad_header = False
-            for bad_header in Constants.REDL_URL_BAD_HEADERS:
-                if header.lower().startswith(bad_header):
-                    is_bad_header = True
-                    break
-            if is_bad_header:
-                continue
-            new_headers.append(header)
-        new_headers.append("Accept: */*")
-
-        new_headers = Constants.NEWLINE.join(new_headers)
-        new_req += new_headers
-        new_req += Constants.NEWLINE * 2
-
-        new_req = new_req.replace("${RANDOMIZE}", str(random.randint(100000000000, 999999999999)))
-        attack = self._callbacks.makeHttpRequest(service, new_req)
-        resp = attack.getResponse()
-        if resp and create_log:
-            # create a new log entry with the message details
-            self.add_log_entry(attack)
 
     def _send_collaborator(self, injector, burp_colab, all_types, basename, content, issue, redownload=False,
                            replace=None, randomize=True):

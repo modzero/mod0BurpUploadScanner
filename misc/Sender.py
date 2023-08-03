@@ -37,6 +37,37 @@ class Sender():
                     urrs.append(self._make_http_request(injector, req))
         return urrs
     
+    def send_get_request(self, brr, relative_url, create_log):
+        # Simply tries to send brr but as a GET request and to a different URL
+        service = brr.getHttpService()
+        iRequestInfo = self._helpers.analyzeRequest(brr)
+        new_req = "GET " + relative_url + " HTTP/1.1" + Constants.NEWLINE
+        headers = iRequestInfo.getHeaders()
+        # very strange, Burp seems to include the status line in .getHeaders()...
+        headers = headers[1:]
+        new_headers = []
+        for header in headers:
+            is_bad_header = False
+            for bad_header in Constants.REDL_URL_BAD_HEADERS:
+                if header.lower().startswith(bad_header):
+                    is_bad_header = True
+                    break
+            if is_bad_header:
+                continue
+            new_headers.append(header)
+        new_headers.append("Accept: */*")
+
+        new_headers = Constants.NEWLINE.join(new_headers)
+        new_req += new_headers
+        new_req += Constants.NEWLINE * 2
+
+        new_req = new_req.replace("${RANDOMIZE}", str(random.randint(100000000000, 999999999999)))
+        attack = self._callbacks.makeHttpRequest(service, new_req)
+        resp = attack.getResponse()
+        if resp and create_log:
+            # create a new log entry with the message details
+            self.burp_extender.add_log_entry(attack)
+
     def _make_http_request(self, injector, req, report_timeouts=True, throttle=True, redownload_filename=None):
         if injector.opts.redl_enabled and injector.opts.scan_controler.requesting_stop:
             print("User is requesting stop...")
