@@ -910,7 +910,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                      "which contains a burp colaborator URL. This means that Server Side Request Forgery is possible. " \
                      "Check https://imagetragick.com/ for more details about CVE-2016-3718. Interactions for CVE-2016-3718:<br><br>"
             issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.IM_MVG_TYPES, basename, content_mvg, issue))
+            colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.IM_MVG_TYPES, basename, content_mvg, issue))
         return colab_tests
 
     def _imagetragick_cve_2016_3714_sleep(self, injector):
@@ -1056,14 +1056,14 @@ class BurpExtender(IBurpExtender, IScannerCheck,
             if injector.opts.file_formats['mvg'].isSelected():
                 issue = self._create_issue_template(injector.get_brr(), name, detail.format("MVG", cmd), confidence, severity)
                 content_mvg = mvg.format(injector.opts.image_width, injector.opts.image_height, cmd, server)
-                colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.IM_MVG_TYPES, basename + "Mvg" + cmd_name,
+                colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.IM_MVG_TYPES, basename + "Mvg" + cmd_name,
                                                            content_mvg, issue, replace=replace))
 
             if injector.opts.file_formats['svg'].isSelected():
                 issue = self._create_issue_template(injector.get_brr(), name, detail.format("SVG", cmd), confidence, severity)
                 content_svg = svg.format(injector.opts.image_width, injector.opts.image_height, cmd, server,
                                          injector.opts.image_height, injector.opts.image_width)
-                colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.IM_SVG_TYPES, basename + "Svg" + cmd_name,
+                colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.IM_SVG_TYPES, basename + "Svg" + cmd_name,
                                                            content_svg, issue, replace=replace))
 
         return colab_tests
@@ -1119,7 +1119,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                 details = base_details + detail_colab.format(cmd_name, basename)
                 issue = self._create_issue_template(injector.get_brr(), name, details, confidence, severity)
                 # print("Sending basename, replace", repr(basename), repr(replace))
-                colabs.extend(self._send_collaborator(injector, burp_colab, types, basename, content, issue, replace=replace))
+                colabs.extend(self.sender.send_collaborator(injector, burp_colab, types, basename, content, issue, replace=replace))
 
         return colabs
 
@@ -1268,7 +1268,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                     cmd,
                     server
                 )
-                colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.GS_TYPES, basename + param + cmd_name,
+                colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.GS_TYPES, basename + param + cmd_name,
                                                            attack, issue, replace=replace, redownload=True))
 
         return colab_tests
@@ -1292,7 +1292,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
                  "local file include. Interactions:<br><br>"
         issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
 
-        colabs = self._send_collaborator(injector, burp_colab, Constants.AV_TYPES,
+        colabs = self.sender.send_collaborator(injector, burp_colab, Constants.AV_TYPES,
                                        basename + "M3u", content_m3u8, issue)
 
         # avi file with m3u as described on https://hackerone.com/reports/226756
@@ -1310,7 +1310,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
 
         #Yes this looks weird here that we pass content_m3u8, but that's correct
-        colabs2 = self._send_collaborator(injector, burp_colab, Constants.AV_TYPES,
+        colabs2 = self.sender.send_collaborator(injector, burp_colab, Constants.AV_TYPES,
                                          basename + "AviM3u", content_m3u8, issue, replace=avi_generator.get_avi_file)
 
         colabs.extend(colabs2)
@@ -1791,7 +1791,7 @@ Response.write(a&c&b)
         issue_colab = self._create_issue_template(injector.get_brr(), title, detail_colab, "Certain", "High")
         self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=expect))
         # We do not need to call self.sender.simple here as in this case the send_collaborator will be sufficient
-        colab_tests.extend(self._send_collaborator(injector, burp_colab, types, basename, content, issue_colab,
+        colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, types, basename, content, issue_colab,
                                                    redownload=True, replace=replace_list, randomize=False))
 
         return colab_tests
@@ -1837,7 +1837,7 @@ Response.write(a&c&b)
         issue_colab = self._create_issue_template(injector.get_brr(), title, detail_colab, "Certain", "High")
         self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=expect))
         # We do not need to call self.sender.simple here as in this case the send_collaborator will be sufficient
-        colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.PL_TYPES, basename, content_perl, issue_colab,
+        colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.PL_TYPES, basename, content_perl, issue_colab,
                                                redownload=True, replace=replace_list))
 
 
@@ -1876,7 +1876,7 @@ Response.write(a&c&b)
         issue_colab = self._create_issue_template(injector.get_brr(), title, detail_colab, "Certain", "High")
         self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=expect))
         # We do not need to call self.sender.simple here as in this case the send_collaborator will be sufficient
-        colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.PY_TYPES, basename, content_python, issue_colab,
+        colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.PY_TYPES, basename, content_python, issue_colab,
                                                    redownload=True, replace="test.example.org"))
 
 
@@ -1910,7 +1910,7 @@ Response.write(a&c&b)
         issue_colab = self._create_issue_template(injector.get_brr(), title, detail_colab, "Certain", "High")
         self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=expect))
         # We do not need to call self.sender.simple here as in this case the send_collaborator will be sufficient
-        colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.RB_TYPES, basename, content_ruby, issue_colab,
+        colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.RB_TYPES, basename, content_ruby, issue_colab,
                                                    redownload=True, replace="test.example.org"))
 
         # Not going to add as a feature: elf binary .cgi files
@@ -1979,7 +1979,7 @@ Response.write(a&c&b)
             content = '<!--#exec cmd="{} {}" -->'.format(cmd, server)
             detail = "{}A {} payload was used. <br>Interactions: <br><br>".format(base_detail, cmd_name)
             issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.SSI_TYPES, basename,
+            colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.SSI_TYPES, basename,
                                                        content, issue, replace=replace, redownload=True))
 
         # RCE with Burp collaborator - File metadata
@@ -1996,7 +1996,7 @@ Response.write(a&c&b)
             basename = Constants.DOWNLOAD_ME + Constants.FILE_START + "SsiBfRce" + name
             desc = base_desc.format(cgi.escape(name), cgi.escape(cmd_name))
             issue = self._create_issue_template(injector.get_brr(), issue_name, base_detail + desc, confidence, severity)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.SSI_TYPES, basename,
+            colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.SSI_TYPES, basename,
                                                        content, issue, replace=ssicolab.placeholder, redownload=True))
 
         return colab_tests
@@ -2055,7 +2055,7 @@ Response.write(a&c&b)
                  "that ESI attacks result in successful Burp Collaborator interactions, this is also likely to " \
                  "be a Squid proxy, which is one of the few proxies that support that.<br>Interactions: <br><br>"
         issue = self._create_issue_template(injector.get_brr(), issue_name, detail, confidence, severity)
-        colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.ESI_TYPES, basename,
+        colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.ESI_TYPES, basename,
                                                    content, issue, redownload=True))
 
         # Not doing the metadata file + Burp Collaborator approach here, as that seems to be a waste of requests as explained
@@ -2091,7 +2091,7 @@ Response.write(a&c&b)
                      "Usually you will be able to read local files, eg. local pictures. " \
                      "Interactions:<br><br>".format(Constants.MARKER_COLLAB_URL)
             issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.SVG_TYPES, basename, content_xlink, issue,
+            colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.SVG_TYPES, basename, content_xlink, issue,
                                                   redownload=True))
 
             # External iFrame according to https://twitter.com/akhilreni_hs/status/1113762867881185281 and
@@ -2110,7 +2110,7 @@ Response.write(a&c&b)
                      "Usually you will be able to read local files, eg. local pictures. " \
                      "Interactions:<br><br>".format(Constants.MARKER_COLLAB_URL)
             issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.SVG_TYPES, basename, content_iframe, issue,
+            colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.SVG_TYPES, basename, content_iframe, issue,
                                                        redownload=True))
 
 
@@ -2153,7 +2153,7 @@ Response.write(a&c&b)
                          "Interactions:<br><br>"
                 issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
                 colab_tests.extend(
-                    self._send_collaborator(injector, burp_colab, Constants.SVG_TYPES, basename, svg, issue,
+                    self.sender.send_collaborator(injector, burp_colab, Constants.SVG_TYPES, basename, svg, issue,
                                             redownload=True))
 
         return colab_tests
@@ -2181,7 +2181,7 @@ Response.write(a&c&b)
                      "Usually you will be able to read local files, eg. local pictures. " \
                      "Interactions:<br><br>".format(Constants.MARKER_COLLAB_URL)
             issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.SVG_TYPES, basename, base_svg, issue, redownload=True))
+            colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.SVG_TYPES, basename, base_svg, issue, redownload=True))
         return colab_tests
 
     def _xxe_xml(self, injector, burp_colab):
@@ -2207,7 +2207,7 @@ Response.write(a&c&b)
                          "Usually you will be able to read local files and do SSRF. This issue needs further manual investigation." \
                          "Interactions:<br><br>"
                 issue = self._create_issue_template(injector.get_brr(), name, detail, confidence, severity)
-                colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.XML_TYPES, basename, xml, issue, redownload=True))
+                colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.XML_TYPES, basename, xml, issue, redownload=True))
 
         return colab_tests
 
@@ -2227,7 +2227,7 @@ Response.write(a&c&b)
                 ('', ext, ''),
                 ('', ext, XxeOfficeDoc.EXTENSION_TO_MIME[ext]),
             ]
-            c = self._send_collaborator(injector, burp_colab, types, basename, content, issue,
+            c = self.sender.send_collaborator(injector, burp_colab, types, basename, content, issue,
                                         replace=x._inject_burp_url, redownload=True)
             colab_tests.extend(c)
         return colab_tests
@@ -2447,7 +2447,7 @@ trailer
             issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
             self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
             self.sender.simple(injector, Constants.PDF_TYPES, basename + "Mal", content, redownload=True)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.PDF_TYPES, basename + "Colab", content, issue_colab,
+            colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.PDF_TYPES, basename + "Colab", content, issue_colab,
                                replace="test.example.org", redownload=True))
 
             content = '''% a pdf file where javascript code is evaluated for execution
@@ -2489,7 +2489,7 @@ trailer
             issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
             self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
             self.sender.simple(injector, Constants.PDF_TYPES, basename + "Mal", content, redownload=True)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.PDF_TYPES, basename + "Colab", content, issue_colab,
+            colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.PDF_TYPES, basename + "Colab", content, issue_colab,
                                                        redownload=True))
 
             content = '''% a PDF file using an XFA
@@ -2557,7 +2557,7 @@ trailer <<
             issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
             self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
             self.sender.simple(injector, Constants.PDF_TYPES, basename + "Mal", content, redownload=True)
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.PDF_TYPES, basename + "Colab", content, issue_colab,
+            colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.PDF_TYPES, basename + "Colab", content, issue_colab,
                                                        redownload=True))
 
         return colab_tests
@@ -2591,7 +2591,7 @@ trailer <<
         issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
         self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
         self.sender.simple(injector, Constants.URL_TYPES, basename + "Mal", content, redownload=True)
-        colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.URL_TYPES, basename + "Colab", content, issue_colab,
+        colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.URL_TYPES, basename + "Colab", content, issue_colab,
                                                    redownload=True, replace="test.example.org"))
 
         # The same with Desktop.ini
@@ -2613,7 +2613,7 @@ trailer <<
         issue_colab = self._create_issue_template(injector.get_brr(), title_colab, detail_colab, "Firm", "High")
         self.dl_matchers.add(DownloadMatcher(issue_download, filecontent=content))
         self.sender.simple(injector, Constants.INI_TYPES, "Desktop", content, redownload=True, randomize=False)
-        colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.INI_TYPES, "Desktop", content, issue_colab,
+        colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.INI_TYPES, "Desktop", content, issue_colab,
                                                    redownload=True, replace="test.example.org", randomize=False))
 
         return colab_tests
@@ -2660,7 +2660,7 @@ trailer <<
                             # Injecting a collaborator URL with http:// and https:// etc. would be possible here
                             # but as we already pass this as an insertion point for active scan we don't do this here
                         for index, content in enumerate(file_contents):
-                            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.CSV_TYPES, basename + "Colab" + str(index),
+                            colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.CSV_TYPES, basename + "Colab" + str(index),
                                                                         content, issue, replace=replace, redownload=True))
 
         if injector.opts.file_formats['xlsx'].isSelected():
@@ -2767,7 +2767,7 @@ trailer <<
             desc += "<br>In this case we actually detected that interactions took place, meaning the server executed " \
                     "the payload. Interactions: <br><br>"
             issue = self._create_issue_template(injector.get_brr(), "Malicious IQY Collaborator Interaction", desc, "Firm", "High")
-            colab_tests.extend(self._send_collaborator(injector, burp_colab, Constants.IQY_TYPES, basename + "Colab",
+            colab_tests.extend(self.sender.send_collaborator(injector, burp_colab, Constants.IQY_TYPES, basename + "Colab",
                                                        content, issue, redownload=True))
 
         # TODO Burp API limitation: We could include a Link in a spreadsheet document and hope/wait for someone
@@ -3769,79 +3769,6 @@ trailer <<
             yield "Sleep", "sleep", 1, ""
             # Windows
             yield "Ping", "ping -n", 2, " localhost"
-
-    def _send_collaborator(self, injector, burp_colab, all_types, basename, content, issue, redownload=False,
-                           replace=None, randomize=True):
-        colab_tests = []
-        types = injector.get_types(all_types)
-        i = 0
-        for prefix, ext, mime_type in types:
-            break_when_done = False
-            for prot in Constants.PROTOCOLS_HTTP:
-                colab_url = burp_colab.generate_payload(True)
-                if callable(replace):
-                    # we got a function like object we need to call with the content and collaborator URL
-                    # to get the collaborator injected content
-                    new_content = replace(content, prot + colab_url + "/")
-                    new_basename = basename
-                elif type(replace) is list or type(replace) is tuple:
-                    # we got a list of string that has to be replaced with the collaborator URL
-                    new_content = content
-                    new_basename = basename
-                    already_found = []
-                    for repl in replace:
-                        if not repl:
-                            if Constants.MARKER_COLLAB_URL not in content and \
-                            Constants.MARKER_COLLAB_URL not in new_basename and \
-                            Constants.MARKER_COLLAB_URL not in already_found:
-                                print("Warning: Magic marker {} (looped) not found in content or filename of " \
-                                      "_send_collaborator:\n {} {}".format(Constants.MARKER_COLLAB_URL, repr(content), repr(basename)))
-                            already_found.append(Constants.MARKER_COLLAB_URL)
-                            new_content = new_content.replace(Constants.MARKER_COLLAB_URL, prot + colab_url + "/")
-                            new_basename = new_basename.replace(Constants.MARKER_COLLAB_URL, prot + colab_url + "/")
-                        else:
-                            if repl not in content and repl not in new_basename and repl not in already_found:
-                                print("Warning: Marker", repl, "not found in content or filename of _send_collaborator:\n", repr(content), repr(basename))
-                            already_found.append(repl)
-                            new_content = new_content.replace(repl, colab_url)
-                            new_basename = new_basename.replace(repl, colab_url)
-                    # We don't need the different prot here, so break the inner loop over the protocols once sent
-                    break_when_done = True
-                elif replace:
-                    # we got a string that has to be replaced with the collaborator URL
-                    # no protocol here!
-                    if replace not in content and replace not in basename:
-                        print("Warning: Magic marker (str)", replace, "not found in content or filename of _send_collaborator:\n", repr(content), repr(basename))
-                    new_content = content.replace(replace, colab_url)
-                    new_basename = basename.replace(replace, colab_url)
-                    # We don't need the different prot here, so break the inner loop over the protocols once sent
-                    break_when_done = True
-                else:
-                    # the default is we simply replace Constants.MARKER_COLLAB_URL with a collaborator URL
-                    if Constants.MARKER_COLLAB_URL not in content and Constants.MARKER_COLLAB_URL not in basename:
-                        print("Warning: Magic marker (default) {} not found in content or filename of " \
-                              "_send_collaborator:\n {} {}".format(Constants.MARKER_COLLAB_URL, repr(content), repr(basename)))
-                    new_content = content.replace(Constants.MARKER_COLLAB_URL, prot + colab_url + "/")
-                    new_basename = basename.replace(Constants.MARKER_COLLAB_URL, prot + colab_url + "/")
-                if randomize:
-                    number = str(i) + ''.join(random.sample(string.ascii_letters, 3))
-                else:
-                    number = ""
-                new_content = new_content.replace(Constants.MARKER_CACHE_DEFEAT_URL, "https://example.org/" + ''.join(random.sample(string.ascii_letters, 11)) + "/")
-                filename = prefix + new_basename + number + ext
-                req = injector.get_request(filename, new_content, content_type=mime_type)
-                i += 1
-                if req:
-                    x = self._filename_to_expected(filename)
-                    if redownload:
-                        urr = self._make_http_request(injector, req, redownload_filename=x)
-                    else:
-                        urr = self._make_http_request(injector, req)
-                    if urr:
-                        colab_tests.append(ColabTest(colab_url, urr, issue))
-                if break_when_done:
-                    break
-        return colab_tests
 
     def _send_sleep_based(self, injector, basename, content, types, sleep_time, issue, redownload=False, randomize=True):
         types = injector.get_types(types)

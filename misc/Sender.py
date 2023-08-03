@@ -6,8 +6,7 @@ from helpers.FloydsHelpers import FloydsHelpers
 from misc.Constants import Constants
 from misc.CustomRequestResponse import CustomRequestResponse
 from misc.CustomScanIssue import CustomScanIssue
-from misc.Misc import StopScanException, UploadRequestsResponses
-from ui.LogEntry import LogEntry
+from misc.Misc import ColabTest, StopScanException, UploadRequestsResponses
 
 
 class Sender():
@@ -67,6 +66,79 @@ class Sender():
         if resp and create_log:
             # create a new log entry with the message details
             self.burp_extender.add_log_entry(attack)
+
+    def send_collaborator(self, injector, burp_colab, all_types, basename, content, issue, redownload=False,
+                           replace=None, randomize=True):
+        colab_tests = []
+        types = injector.get_types(all_types)
+        i = 0
+        for prefix, ext, mime_type in types:
+            break_when_done = False
+            for prot in Constants.PROTOCOLS_HTTP:
+                colab_url = burp_colab.generate_payload(True)
+                if callable(replace):
+                    # we got a function like object we need to call with the content and collaborator URL
+                    # to get the collaborator injected content
+                    new_content = replace(content, prot + colab_url + "/")
+                    new_basename = basename
+                elif type(replace) is list or type(replace) is tuple:
+                    # we got a list of string that has to be replaced with the collaborator URL
+                    new_content = content
+                    new_basename = basename
+                    already_found = []
+                    for repl in replace:
+                        if not repl:
+                            if Constants.MARKER_COLLAB_URL not in content and \
+                            Constants.MARKER_COLLAB_URL not in new_basename and \
+                            Constants.MARKER_COLLAB_URL not in already_found:
+                                print("Warning: Magic marker {} (looped) not found in content or filename of " \
+                                      "_send_collaborator:\n {} {}".format(Constants.MARKER_COLLAB_URL, repr(content), repr(basename)))
+                            already_found.append(Constants.MARKER_COLLAB_URL)
+                            new_content = new_content.replace(Constants.MARKER_COLLAB_URL, prot + colab_url + "/")
+                            new_basename = new_basename.replace(Constants.MARKER_COLLAB_URL, prot + colab_url + "/")
+                        else:
+                            if repl not in content and repl not in new_basename and repl not in already_found:
+                                print("Warning: Marker", repl, "not found in content or filename of _send_collaborator:\n", repr(content), repr(basename))
+                            already_found.append(repl)
+                            new_content = new_content.replace(repl, colab_url)
+                            new_basename = new_basename.replace(repl, colab_url)
+                    # We don't need the different prot here, so break the inner loop over the protocols once sent
+                    break_when_done = True
+                elif replace:
+                    # we got a string that has to be replaced with the collaborator URL
+                    # no protocol here!
+                    if replace not in content and replace not in basename:
+                        print("Warning: Magic marker (str)", replace, "not found in content or filename of _send_collaborator:\n", repr(content), repr(basename))
+                    new_content = content.replace(replace, colab_url)
+                    new_basename = basename.replace(replace, colab_url)
+                    # We don't need the different prot here, so break the inner loop over the protocols once sent
+                    break_when_done = True
+                else:
+                    # the default is we simply replace Constants.MARKER_COLLAB_URL with a collaborator URL
+                    if Constants.MARKER_COLLAB_URL not in content and Constants.MARKER_COLLAB_URL not in basename:
+                        print("Warning: Magic marker (default) {} not found in content or filename of " \
+                              "_send_collaborator:\n {} {}".format(Constants.MARKER_COLLAB_URL, repr(content), repr(basename)))
+                    new_content = content.replace(Constants.MARKER_COLLAB_URL, prot + colab_url + "/")
+                    new_basename = basename.replace(Constants.MARKER_COLLAB_URL, prot + colab_url + "/")
+                if randomize:
+                    number = str(i) + ''.join(random.sample(string.ascii_letters, 3))
+                else:
+                    number = ""
+                new_content = new_content.replace(Constants.MARKER_CACHE_DEFEAT_URL, "https://example.org/" + ''.join(random.sample(string.ascii_letters, 11)) + "/")
+                filename = prefix + new_basename + number + ext
+                req = injector.get_request(filename, new_content, content_type=mime_type)
+                i += 1
+                if req:
+                    x = self._filename_to_expected(filename)
+                    if redownload:
+                        urr = self._make_http_request(injector, req, redownload_filename=x)
+                    else:
+                        urr = self._make_http_request(injector, req)
+                    if urr:
+                        colab_tests.append(ColabTest(colab_url, urr, issue))
+                if break_when_done:
+                    break
+        return colab_tests
 
     def _make_http_request(self, injector, req, report_timeouts=True, throttle=True, redownload_filename=None):
         if injector.opts.redl_enabled and injector.opts.scan_controler.requesting_stop:
