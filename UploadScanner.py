@@ -97,12 +97,6 @@ if DEBUG_MODE:
 #      type is not sent at all in the request
 
 
-# A lock to make things thread safe that access extension level globals
-# Attention: use wisely! On MacOS it seems to be fine that a thread has the lock
-# and acquires it again, that's fine. However, on Windows acquiring the same lock
-# in the same thread twice will result in a thread lock and everything will halt!
-globals_write_lock = threading.Lock()
-
 class BurpExtender(IBurpExtender, IScannerCheck,
                    AbstractTableModel, ITab, IScannerInsertionPointProvider,
                    IHttpListener, IContextMenuFactory, IExtensionStateListener):
@@ -147,6 +141,12 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         #     self.collab_monitor_thread = CollaboratorMonitorThread(self)
         #     self.collab_monitor_thread.start()
 
+        # A lock to make things thread safe that access extension level globals
+        # Attention: use wisely! On MacOS it seems to be fine that a thread has the lock
+        # and acquires it again, that's fine. However, on Windows acquiring the same lock
+        # in the same thread twice will result in a thread lock and everything will halt!
+        self.globals_write_lock = threading.Lock()
+
         self.collab_monitor_thread = CollaboratorMonitorThread(self)
         self.collab_monitor_thread.start()
 
@@ -158,8 +158,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         print("Creating UI...")
         self._create_ui()
 
-        global globals_write_lock
-        with globals_write_lock:
+        with self.globals_write_lock:
             print("Deserializing settings...")
             self.deserialize_settings()
 
@@ -344,8 +343,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         if not brr.getRequest() or not brr.getResponse():
             print("Tried to send a request where no response came back via context menu to the UploadScanner. Ignoring.")
         else:
-            global globals_write_lock
-            with globals_write_lock:
+            with self.globals_write_lock:
                 # right part
                 sc = ScanController(brr, self._callbacks)
                 # left part, options
@@ -380,8 +378,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
         else:
             should_close = True
         if should_close:
-            global globals_write_lock
-            with globals_write_lock:
+            with self.globals_write_lock:
                 print("Closing tab", index)
                 del self._option_panels[index]
         return should_close
@@ -504,8 +501,7 @@ class BurpExtender(IBurpExtender, IScannerCheck,
 
     # Helper function to easily add an entry to the log:
     def add_log_entry(self, rr):
-        global globals_write_lock
-        with globals_write_lock:
+        with self.globals_write_lock:
             row = self._log.size()
             status = self._helpers.analyzeResponse(rr.getResponse()).getStatusCode()
             self._log.add(LogEntry(status, self._callbacks.saveBuffersToTempFiles(rr),
