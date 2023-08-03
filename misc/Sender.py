@@ -10,7 +10,7 @@ from misc.Misc import StopScanException, UploadRequestsResponses
 from ui.LogEntry import LogEntry
 
 
-class Send():
+class Sender():
     def __init__(self, callbacks, burp_extender):
         self._callbacks = callbacks
         self._helpers = callbacks.getHelpers()

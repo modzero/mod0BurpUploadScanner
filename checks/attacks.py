@@ -3,14 +3,14 @@ from misc.BackdooredFile import BackdooredFile
 from misc.Constants import Constants
 from misc.CustomScanIssue import CustomScanIssue
 from misc.Downloader import DownloadMatcher
-from misc.Send import Send
+from misc.Sender import Sender
 
 
 class attacks():
     def __init__(self, callbacks, dl_matchers, burp_extender):
         self.callbacks = callbacks 
         self.dl_matchers = dl_matchers
-        self.sender = Send(callbacks, burp_extender)
+        self.sender = Sender(callbacks, burp_extender)
 
     def _servercode_rce_backdoored_file(self, injector, payload_func, param_func, globalOptionsPanel, formats=None, ):
         bi = BackdooredFile(injector.opts.get_enabled_file_formats(), globalOptionsPanel.image_exiftool)
