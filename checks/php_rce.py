@@ -1,11 +1,11 @@
 import random
 import string
-from checks.attacks import attacks
+from checks.attacks import Attacks
 from misc.Constants import Constants
 
 class php_rce_check():
     def __init__(self, injector, globalOptionsPanel, callbacks, dl_matchers, burp_extender):
-        self.attacks = attacks(callbacks, dl_matchers, burp_extender)
+        self.attacks = Attacks(callbacks, dl_matchers, burp_extender)
         self.check(injector, globalOptionsPanel)
 
     def check(self, injector, globalOptionsPanel):

@@ -6,7 +6,7 @@ from misc.Downloader import DownloadMatcher
 from misc.Sender import Sender
 
 
-class attacks():
+class Attacks():
     def __init__(self, callbacks, dl_matchers, burp_extender):
         self.callbacks = callbacks 
         self.dl_matchers = dl_matchers
