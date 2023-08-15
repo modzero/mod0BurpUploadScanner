@@ -98,9 +98,9 @@ class CollaboratorMonitorThread(Thread):
 
     NAME = "UploadScannerExtensionMonitorThread"
 
-    def __init__(self, extension):
+    def __init__(self, burp_extender):
         Thread.__init__(self)
-        self.extension = extension
+        self.burp_extender = burp_extender
         self.colabs = []
         self.stop = False
         self.paused = False
@@ -139,12 +139,12 @@ class CollaboratorMonitorThread(Thread):
     def pause(self):
         with self.lock:
             self.paused = True
-            self.extension = None
+            self.burp_extender = None
 
     def resume(self, extension):
         with self.lock:
             self.paused = False
-            self.extension = extension
+            self.burp_extender = extension
 
     def run(self):
         while not self.stop:
@@ -187,13 +187,13 @@ class CollaboratorMonitorThread(Thread):
                     interactions = interactions_dict[found_colab_url]
                     issue = colab_test.issue.create_copy()
                     issue.detail += self._get_interactions_as_str(interactions)
-                    issue.setUrl(self.extension._helpers.analyzeRequest(colab_test.urr.upload_rr).getUrl())
+                    issue.setUrl(self.burp_extender._helpers.analyzeRequest(colab_test.urr.upload_rr).getUrl())
                     issue.httpMessagesPy.append(colab_test.urr.upload_rr)
                     if colab_test.urr.preflight_rr:
                         issue.httpMessagesPy.append(colab_test.urr.preflight_rr)
                     if colab_test.urr.download_rr:
                         issue.httpMessagesPy.append(colab_test.urr.download_rr)
-                    self.extension._add_scan_issue(issue)
+                    self.burp_extender._add_scan_issue(issue)
             if self.saved_interactions_for_later:
                 if self.print_message_counter % 10 == 0:
                     print("Found Collaborator interactions where we didn't get the issue details yet, saving for later... " \
@@ -211,14 +211,14 @@ class CollaboratorMonitorThread(Thread):
             if t == "DNS":
                 desc += "<br>DNS query type: " + FloydsHelpers.u2s(interaction.getProperty("query_type"))
                 desc += "<br>RAW query: " + FloydsHelpers.jb2ps(
-                    self.extension._helpers.base64Decode(interaction.getProperty("raw_query")))
+                    self.burp_extender._helpers.base64Decode(interaction.getProperty("raw_query")))
                 desc += "<br>"
             elif t == "HTTP":
                 desc += "<br>Protocol: " + FloydsHelpers.u2s(interaction.getProperty("protocol")) + "<br>"
                 desc += "<br>RAW " + FloydsHelpers.u2s(interaction.getProperty("protocol")) + " request:<br>" + FloydsHelpers.jb2ps(
-                    self.extension._helpers.base64Decode(interaction.getProperty("request"))).replace("\n", "<br>")
+                    self.burp_extender._helpers.base64Decode(interaction.getProperty("request"))).replace("\n", "<br>")
                 desc += "<br>RAW " + FloydsHelpers.u2s(interaction.getProperty("protocol")) + " response:<br>" + FloydsHelpers.jb2ps(
-                    self.extension._helpers.base64Decode(interaction.getProperty("response"))).replace("\n", "<br>")
+                    self.burp_extender._helpers.base64Decode(interaction.getProperty("response"))).replace("\n", "<br>")
                 desc += "<br>"
         desc += "<br>"
         return desc
