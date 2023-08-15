@@ -1,6 +1,6 @@
 import random
 import string
-from checks.attacks import Attacks
+from attacks import Attacks
 from misc.Constants import Constants
 
 class php_rce_check():

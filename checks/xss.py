@@ -3,7 +3,7 @@
 import cgi
 import random
 import string
-from checks.attacks import Attacks
+from attacks import Attacks
 from misc.BackdooredFile import BackdooredFile
 from misc.Constants import Constants
 from misc.CustomScanIssue import CustomScanIssue
