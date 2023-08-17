@@ -1,6 +1,16 @@
 from burp import IScannerInsertionPoint
+
+# Java stdlib imports
+from java.awt import Color
+from java.awt import Font
+from java.awt import Image
+from java.awt import RenderingHints
+from java.awt.image import BufferedImage
+from java.io import ByteArrayOutputStream
+from javax.imageio import ImageIO
+
 from helpers.FloydsHelpers import FloydsHelpers
- 
+
 class ReverseOcrInsertionPoint(IScannerInsertionPoint):
     def __init__(self, injector, file_type):
         self.injector = injector

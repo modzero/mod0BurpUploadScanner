@@ -6,7 +6,9 @@ from helpers.FloydsHelpers import FloydsHelpers
 from misc.Constants import Constants
 from misc.CustomRequestResponse import CustomRequestResponse
 from misc.CustomScanIssue import CustomScanIssue
-from misc.Misc import ColabTest, StopScanException, UploadRequestsResponses
+from misc.Misc import ColabTest
+from misc.StopScanException import StopScanException
+from misc.UploadRequestsResponses import UploadRequestsResponses
 
 
 class Sender():

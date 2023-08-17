@@ -1,6 +1,7 @@
 
 import cgi
 from helpers.FloydsHelpers import FloydsHelpers
+from helpers.checks_helper import Checks_Helper
 from misc.Constants import Constants
 from misc.CustomScanIssue import CustomScanIssue
 from misc.Misc import Xxe, XxeOfficeDoc, XxeXmp
@@ -8,7 +9,7 @@ from misc.Sender import Sender
 
 
 class xxe_checks():
-    def __init__(self, injector, burp_colab, colab_tests, burp_extender, callbacks):
+    def __init__(self, injector, burp_colab, colab_tests, burp_extender, callbacks, collab_monitor_thread):
         self.injector = injector
         self.burp_colab = burp_colab
         self.colab_tests = colab_tests
@@ -21,7 +22,7 @@ class xxe_checks():
         self.colab_tests.extend(self._xxe_xml(injector, burp_colab))
         self.colab_tests.extend(self._xxe_office(injector, burp_colab))
         self.colab_tests.extend(self._xxe_xmp(injector, burp_colab))
-        self.burp_extender.collab_monitor_thread.add_or_update(self.burp_colab, self.colab_tests)
+        collab_monitor_thread.add_or_update(self.burp_colab, self.colab_tests)
 
     def _xxe_svg_external_image(self, injector, burp_colab):
         colab_tests = []
@@ -204,5 +205,6 @@ class xxe_checks():
         # Therefore this was entirely implemented in its own class... not a beauty, but it works
         x = XxeXmp(injector.opts.get_enabled_file_formats(), self.burp_extender._globalOptionsPanel.image_exiftool, injector.opts.image_width,
                     injector.opts.image_height, Constants.MARKER_ORIG_EXT, Constants.PROTOCOLS_HTTP, Constants.FILE_START,
-                    self.burp_extender._make_http_request)
+                    self.burp_extender)
         return x.do_collaborator_tests(injector, burp_colab, injector.opts.get_enabled_file_formats())
+

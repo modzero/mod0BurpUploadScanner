@@ -21,6 +21,7 @@ Created on Feb 24, 2017
 # Jav
 # a stdlib imports
 from helpers.FloydsHelpers import FloydsHelpers
+from helpers.checks_helper import Checks_Helper
 from javax.swing import JLabel
 from javax.swing import JButton
 from javax.swing import JPanel
@@ -39,9 +40,6 @@ from misc.CustomScanIssue import CustomScanIssue
 from misc.BackdooredFile import BackdooredFile
 from misc.Constants import Constants
 import zipfile  # to create evil zip files in memory
-
-class StopScanException(Exception):
-    pass
 
 # SSI with BackdooredFile and Burp Collaborator payloads
 class SsiPayloadGenerator:
@@ -113,7 +111,7 @@ class Xxe(object):
 class XxeXmp(Xxe):
     """A rather hackish class to reuse the code from BackdooredFile to do XXE in XMP metadata"""
 
-    def __init__(self, enabled_formats, exiftool, width, height, marker_orig_ext, protocols, file_start, http_req_func):
+    def __init__(self, enabled_formats, exiftool, width, height, marker_orig_ext, protocols, file_start, burp_extender):
         self._enabled_formats = enabled_formats
         self._image_exiftool = exiftool
         self._image_width = width
@@ -121,7 +119,7 @@ class XxeXmp(Xxe):
         self._marker_orig_ext = marker_orig_ext
         self._protocols = protocols
         self._file_start = file_start
-        self._make_http_request = http_req_func
+        self.burp_extender = burp_extender
 
         self.xmp_start = "<?xpacket"
         self.xmp_end = "</x:xmpmeta>"
@@ -200,7 +198,7 @@ class XxeXmp(Xxe):
                 req = injector.get_request(filename, new_content, content_type=mime_type)
                 i += 1
                 if req:
-                    urr = self._make_http_request(injector, req, redownload_filename=filename)
+                    urr = Checks_Helper.make_http_request(self.burp_extender, injector, req, redownload_filename=filename)
                     if urr:
                         colab_tests.append(ColabTest(colab_url, urr, issue))
         return colab_tests
@@ -580,16 +578,6 @@ class Xbm(object):
         xbm += "};\n"
         return xbm
 # end modules
-
-class UploadRequestsResponses:
-    """
-    A class that describes requests/responses from the upload request
-    to the downloaded file response again.
-    """
-    def __init__(self, upload_rr, preflight_rr=None, download_rr=None):
-        self.upload_rr = upload_rr
-        self.preflight_rr = preflight_rr
-        self.download_rr = download_rr
 
 class ColabTest(object):
     def __init__(self, colab_url, urr, issue=None):
