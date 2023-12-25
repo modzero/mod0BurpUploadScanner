@@ -1,0 +1,2 @@
+class StopScanException(Exception):
+    pass
